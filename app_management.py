@@ -327,7 +327,20 @@ def main():
         st.warning("⚠️ No fleet data available. Please wait for the admin to publish updated stats.")
         st.stop()
 
-    df = pd.DataFrame(raw_data) if isinstance(raw_data, list) else raw_data.copy()
+    # Extract the fleet list from the stored dictionary
+    if isinstance(raw_data, dict):
+        fleet_list = raw_data.get("fleet", [])
+    elif isinstance(raw_data, list):
+        fleet_list = raw_data
+    else:
+        st.warning("⚠️ Unexpected data format.")
+        st.stop()
+
+    if not fleet_list:
+        st.warning("⚠️ No fleet data available. Please wait for the admin to publish updated stats.")
+        st.stop()
+
+    df = pd.DataFrame(fleet_list)
 
     # Normalise key numeric columns
     for col in ["Hours Online", "Hours on Trip", "Total Trips", "Score"]:
