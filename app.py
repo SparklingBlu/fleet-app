@@ -376,6 +376,9 @@ UBER_ORG_UUID       = "8B4z_AZXs0G7Vto_3jq_bGHEfZ3iy78wmMjlJU_SnvhuBn71eN64PJdqg
 elif view == "drivers":
     data = load_fleet_data()
     st.markdown("# 🚛 SparklingBlu — Your Weekly Stats")
+    st.write("DEBUG - Data loaded:", data is not None)
+    if data:
+        st.write("DEBUG - Drivers count:", len(data.get("fleet", [])))
 
     if not data:
         st.warning("Stats not available yet. Ask your fleet manager to publish this week's data.")
