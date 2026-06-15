@@ -1,5 +1,13 @@
-streamlit
-pandas
-fpdf2
-requests
-openpyxl
+# SparklingBlu Fleet Management System - Requirements
+# Core
+streamlit>=1.28.0
+pandas>=2.0.0
+
+# API & HTTP
+requests>=2.31.0
+
+# Data processing (for future use)
+numpy>=1.24.0
+
+# Future: Uber SDK (uncomment when ready)
+# uber-rides>=0.6.0

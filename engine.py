@@ -1,16 +1,20 @@
 # engine.py
 # Scoring and coaching — SparklingBlu Fleet Performance System
-# Targets: 10h/day | 5 trips/day | 80%+ AR | max 5% CR | 50h/week Mon-Sun 5am-7:30pm
+# Phase 2: Hotspot-aligned targets with fuel efficiency metrics
+# Targets: 40-50h/week | 50-75 trips/week (hotspot-dependent) | R28.06/L fuel
 
 from datetime import datetime
+from hotspots import (
+    HOTSPOT_WEEKLY_TARGETS, COST_PER_KM, FUEL_PRICE_PER_LITRE,
+    PEAK_BLOCKS, get_current_peak_block
+)
 
-WEEKLY_TARGETS = {
-    "weekly_hours":    50.0,   # full week target
-    "weekly_trips":    30,     # full week target
-    "daily_hours":     10.0,   # per active day
-    "daily_trips":     5,      # per active day
-    "acceptance":      0.80,   # must be >= 80%
-    "cancellation":    0.05,   # must be <= 5%
+# Default weekly targets (used when hotspot not assigned)
+DEFAULT_WEEKLY_TARGETS = {
+    "weekly_hours":    50.0,
+    "weekly_trips":    50,
+    "daily_hours":     10.0,
+    "daily_trips":     10,
 }
 
 SHIFT_START = 5       # 5:00 AM
@@ -35,6 +39,8 @@ def get_week_progress():
     progress     = days_elapsed / 7.0
     days_left    = 6 - day_number
 
+    peak_block, peak_strategy = get_current_peak_block()
+
     return {
         "day_number":   day_number,
         "day_name":     day_name,
@@ -43,115 +49,115 @@ def get_week_progress():
         "days_left":    days_left,
         "current_hour": round(hour, 2),
         "in_shift":     SHIFT_START <= hour <= SHIFT_END,
+        "peak_block":   peak_block,
+        "peak_strategy": peak_strategy,
+        "fuel_price":   FUEL_PRICE_PER_LITRE,
+        "cost_per_km":  round(COST_PER_KM, 2),
     }
 
 
-def calculate_performance_score(confirmation_rate, cancellation_rate,
-                                  hours_online, trips_taken, report_days=1):
+def get_hotspot_targets(hotspot_name=None):
+    """Get weekly targets for a specific hotspot or defaults"""
+    if hotspot_name and hotspot_name in HOTSPOT_WEEKLY_TARGETS:
+        targets = HOTSPOT_WEEKLY_TARGETS[hotspot_name].copy()
+        targets["daily_hours"] = targets["weekly_hours_min"] / 7
+        targets["daily_trips"] = targets["weekly_trips_min"] / 7
+        return targets
+    return DEFAULT_WEEKLY_TARGETS.copy()
+
+
+def calculate_performance_score(hours_online, trips_taken, report_days=1, hotspot_name=None):
     """
-    Scores a driver 0-100 based on how well they are tracking against
-    daily targets over the number of days the CSV covers.
-
-    Scoring weights:
-      Hours vs expected   35%  — must hit 10h per active day
-      Trips vs expected   35%  — must hit 5 trips per active day
-      Acceptance Rate     20%  — must be 80%+
-      Cancellation Rate   10%  — must be 5% or below
-
-    A driver on Thursday (report_days=4) needs:
-      ≥ 40h online  (4 × 10h)
-      ≥ 20 trips    (4 × 5 trips)
-      ≥ 80% AR
-      ≤ 5% CR
+    Scores a driver 0-100 based on hotspot-aligned targets.
+    
+    Phase 2 scoring weights:
+      Hours vs hotspot target   40%
+      Trips vs hotspot target   40%
+      Fuel efficiency           20% (future: actual km/trip data)
+    
+    A driver at Midrand Hub (target: 60-75 trips/week) by Thursday (day 4) needs:
+      ≥ 34h online
+      ≥ 34 trips
     to score in the Top Performer band (≥85).
     """
+    targets = get_hotspot_targets(hotspot_name)
     days = max(int(report_days), 1)
 
-    expected_hours = WEEKLY_TARGETS["daily_hours"] * days   # e.g. 40h by Thu
-    expected_trips = WEEKLY_TARGETS["daily_trips"] * days   # e.g. 20 trips by Thu
+    expected_hours = targets["daily_hours"] * days
+    expected_trips = targets["daily_trips"] * days
 
-    # 1. Hours score (35%)
-    hrs_ratio  = hours_online / expected_hours
-    hrs_score  = min(hrs_ratio, 1.0) * 100 * 0.35
+    # 1. Hours score (40%)
+    hrs_ratio = hours_online / expected_hours if expected_hours > 0 else 0
+    hrs_score = min(hrs_ratio, 1.0) * 100 * 0.40
 
-    # 2. Trips score (35%)
-    trp_ratio  = trips_taken / expected_trips
-    trp_score  = min(trp_ratio, 1.0) * 100 * 0.35
+    # 2. Trips score (40%)
+    trp_ratio = trips_taken / expected_trips if expected_trips > 0 else 0
+    trp_score = min(trp_ratio, 1.0) * 100 * 0.40
 
-    # 3. Acceptance Rate (20%)
-    ar_ratio   = confirmation_rate / WEEKLY_TARGETS["acceptance"]
-    ar_score   = min(ar_ratio, 1.0) * 100 * 0.20
+    # 3. Fuel efficiency placeholder (20%) — will use actual km data in future
+    fuel_score = 100 * 0.20  # Default perfect score until km data available
 
-    # 4. Cancellation Rate (10%) — penalise heavily above 5%
-    if cancellation_rate <= WEEKLY_TARGETS["cancellation"]:
-        cr_base = 100
-    else:
-        excess  = (cancellation_rate - WEEKLY_TARGETS["cancellation"]) * 100
-        cr_base = max(100 - excess * 20, 0)
-    cr_score = cr_base * 0.10
-
-    return round(hrs_score + trp_score + ar_score + cr_score, 1)
+    return round(hrs_score + trp_score + fuel_score, 1)
 
 
-def get_remaining_targets(hours_online, trips_taken, confirmation_rate,
-                           cancellation_rate, progress, report_days=1):
+def get_remaining_targets(hours_online, trips_taken, progress, report_days=1, hotspot_name=None):
+    targets = get_hotspot_targets(hotspot_name)
     days = max(int(report_days), 1)
 
     rem = {}
 
     # Weekly remaining
-    rem["hours_needed"]    = round(max(WEEKLY_TARGETS["weekly_hours"] - hours_online, 0), 1)
-    rem["trips_needed"]    = max(WEEKLY_TARGETS["weekly_trips"] - int(trips_taken), 0)
-    rem["hours_on_track"]  = hours_online >= (WEEKLY_TARGETS["weekly_hours"] * max(progress, 0.01))
-    rem["trips_on_track"]  = trips_taken  >= (WEEKLY_TARGETS["weekly_trips"] * max(progress, 0.01))
+    rem["hours_needed"] = round(max(targets["weekly_hours_min"] - hours_online, 0), 1)
+    rem["trips_needed"] = max(targets["weekly_trips_min"] - int(trips_taken), 0)
+    rem["hours_on_track"] = hours_online >= (targets["weekly_hours_min"] * max(progress, 0.01))
+    rem["trips_on_track"] = trips_taken >= (targets["weekly_trips_min"] * max(progress, 0.01))
 
-    # Daily pace (for display — renamed to weekly totals per user request)
-    rem["hours_weekly"]    = round(hours_online, 1)
-    rem["trips_weekly"]    = int(trips_taken)
-    rem["daily_hours_ok"]  = (hours_online / days) >= WEEKLY_TARGETS["daily_hours"]
-    rem["daily_trips_ok"]  = (trips_taken  / days) >= WEEKLY_TARGETS["daily_trips"]
+    # Current totals
+    rem["hours_weekly"] = round(hours_online, 1)
+    rem["trips_weekly"] = int(trips_taken)
+    rem["daily_hours_ok"] = (hours_online / days) >= targets["daily_hours"] if days > 0 else False
+    rem["daily_trips_ok"] = (trips_taken / days) >= targets["daily_trips"] if days > 0 else False
 
-    # Rates
-    rem["ar_on_track"]     = confirmation_rate >= WEEKLY_TARGETS["acceptance"]
-    rem["ar_gap"]          = round(max(WEEKLY_TARGETS["acceptance"] - confirmation_rate, 0) * 100, 1)
-    rem["cr_on_track"]     = cancellation_rate <= WEEKLY_TARGETS["cancellation"]
-    rem["cr_gap"]          = round(max(cancellation_rate - WEEKLY_TARGETS["cancellation"], 0) * 100, 1)
+    # Fuel cost estimate (based on avg 5km per trip)
+    estimated_km = trips_taken * 5
+    rem["estimated_fuel_cost"] = round(estimated_km * COST_PER_KM, 2)
+    rem["fuel_price_per_litre"] = FUEL_PRICE_PER_LITRE
+    rem["cost_per_km"] = round(COST_PER_KM, 2)
 
     return rem
 
 
-def kpi_fully_met(hours_online, trips_taken, confirmation_rate,
-                   cancellation_rate, report_days=1):
+def kpi_fully_met(hours_online, trips_taken, report_days=1, hotspot_name=None):
     """
-    KPI is met when weekly totals are hit — not daily averages.
-    A driver with 52h over 6 days has clearly met the 50h target.
-    Daily targets are pace guides for coaching only.
+    KPI is met when weekly hotspot targets are hit.
     """
+    targets = get_hotspot_targets(hotspot_name)
     return (
-        hours_online      >= WEEKLY_TARGETS["weekly_hours"]  and
-        trips_taken       >= WEEKLY_TARGETS["weekly_trips"]  and
-        confirmation_rate >= WEEKLY_TARGETS["acceptance"]    and
-        cancellation_rate <= WEEKLY_TARGETS["cancellation"]
+        hours_online >= targets["weekly_hours_min"] and
+        trips_taken >= targets["weekly_trips_min"]
     )
 
 
 def get_coaching_message(score, remaining, week_info):
-    day_name  = week_info["day_name"]
+    day_name = week_info["day_name"]
     days_left = week_info["days_left"]
 
     issues = []
     if not remaining["daily_hours_ok"]:
-        issues.append(f"{remaining['hours_weekly']}h online — need 10h/day pace")
+        issues.append(f"{remaining['hours_weekly']}h online — below target pace")
     if not remaining["daily_trips_ok"]:
-        issues.append(f"{remaining['trips_weekly']} trips — need 5 trips/day pace")
-    if not remaining["ar_on_track"]:
-        issues.append(f"AR {remaining['ar_gap']}% below 80% minimum")
-    if not remaining["cr_on_track"]:
-        issues.append(f"CR {remaining['cr_gap']}% above 5% maximum")
+        issues.append(f"{remaining['trips_weekly']} trips — below target pace")
     if remaining["hours_needed"] > 0:
         issues.append(f"{remaining['hours_needed']}h still needed this week")
     if remaining["trips_needed"] > 0:
         issues.append(f"{remaining['trips_needed']} more trips needed this week")
+
+    # Fuel insight
+    issues.append(f"Est. fuel cost: R{remaining['estimated_fuel_cost']} (@ R{remaining['fuel_price_per_litre']}/L)")
+
+    # Peak block guidance
+    if week_info.get("peak_block") != "Off-Peak":
+        issues.append(f"Peak: {week_info.get('peak_block')} — {week_info.get('peak_strategy')}")
 
     issue_text = "  |  ".join(issues) if issues else "All targets on track"
 

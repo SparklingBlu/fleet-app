@@ -4,8 +4,9 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from engine import get_week_progress
-from teams import TEAMS, match_drivers_to_teams
+from engine import get_week_progress, calculate_performance_score, get_remaining_targets, get_coaching_message
+from teams import TEAMS, match_drivers_to_teams, get_hotspot_for_driver
+from hotspots import HOTSPOTS, PEAK_BLOCKS, COST_PER_KM, FUEL_PRICE_PER_LITRE
 from storage import save_fleet_data, load_fleet_data, is_storage_configured
 from uber_client import fetch_live_driver_data, UberAPIError
 
@@ -87,30 +88,49 @@ def sbv_bar_html(line1, line2=""):
     )
 
 # ── PROCESS API DATAFRAME ─────────────────────────────────────────────────────
-def process_api_dataframe(raw_df):
+def process_api_dataframe(raw_df, week_info):
     """
     Takes a DataFrame from uber_client.fetch_live_driver_data() and enriches it
-    with team assignments and placeholder fields for future scoring.
+    with team assignments, hotspot, and calculated performance scores.
 
     Phase 1 columns expected from API:
         Driver, Hours Online, Hours on Trip, Total Trips
 
-    Phase 1 columns added here:
-        Team, Score (0), Status ('—'), Coaching ('—')
-
-    Designed so that when engine.py is updated, Score/Status/Coaching can be
-    computed properly by passing the df rows through calculate_performance_score()
-    and get_coaching_message() — no structural changes needed.
+    Columns added here:
+        Team, Hotspot, Score, Status, Coaching
     """
     df = raw_df.copy()
 
     # Team assignment (reuses existing teams.py logic)
     df = match_drivers_to_teams(df)
 
-    # Phase 1 placeholders — replaced when engine.py is updated
-    df["Score"]    = 0
-    df["Status"]   = "—"
-    df["Coaching"] = "Scoring coming soon."
+    # Hotspot assignment
+    df["Hotspot"] = df["Driver"].apply(get_hotspot_for_driver)
+
+    scores    = []
+    statuses  = []
+    coachings = []
+
+    for _, row in df.iterrows():
+        try:
+            hours_online = float(row.get("Hours Online", 0) or 0)
+            trips        = int(float(row.get("Total Trips", 0) or 0))
+
+            score, status = calculate_performance_score(hours_online, trips, week_info)
+            remaining     = get_remaining_targets(hours_online, trips, week_info)
+            coaching      = get_coaching_message(status, remaining, week_info)
+        except Exception:
+            score    = 0
+            status   = "—"
+            coaching = "Scoring unavailable."
+
+        scores.append(score)
+        statuses.append(status)
+        coachings.append(coaching)
+
+    df["Score"]    = scores
+    df["Status"]   = statuses
+    df["Coaching"] = coachings
 
     return df
 
@@ -183,12 +203,12 @@ if view == "admin":
                 st.session_state["api_fetched"] = False
 
     # Show persistent error if fetch failed
-    if st.session_state.get("api_error"):
+    if st.session_state.get("api_error") and not st.session_state.get("api_fetched"):
         st.error(f"❌ API Error: {st.session_state['api_error']}")
         with st.expander("🛠️ Troubleshooting"):
             st.markdown("""
-- Check that `UBER_CLIENT_ID` and `UBER_CLIENT_SECRET` are set in Streamlit Secrets
-- Confirm your Uber app is approved for `solutions.suppliers.metrics.read`
+- Check that `UBER_CLIENT_ID`, `UBER_CLIENT_SECRET`, and `UBER_ORG_UUID` are set in Streamlit Secrets
+- Confirm your Uber app is approved for `vehicle_suppliers.organizations.read` and `solutions.suppliers.metrics.read`
 - Check that your org has active drivers in the selected date range
 - Review Uber Developer Dashboard for any app status issues
             """)
@@ -201,45 +221,66 @@ if view == "admin":
 
     # ── Data loaded — process and display ────────────────
     raw_df = st.session_state["api_df"]
-    df     = process_api_dataframe(raw_df)
+    df     = process_api_dataframe(raw_df, week_info)
 
     st.success(f"✅ Loaded **{len(df)} drivers** from Uber API")
 
     # ── Fleet overview metrics ────────────────────────────
     st.subheader("Fleet Overview")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total Drivers",    len(df))
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Total Drivers", len(df))
 
-    avg_hours = round(df["Hours Online"].astype(float).mean(), 1) if "Hours Online" in df.columns else "—"
-    avg_trips = round(df["Total Trips"].astype(float).mean(), 1) if "Total Trips"  in df.columns else "—"
-    total_trips = int(df["Total Trips"].astype(float).sum())      if "Total Trips"  in df.columns else "—"
+    avg_hours   = round(df["Hours Online"].astype(float).mean(), 1) if "Hours Online" in df.columns else "—"
+    avg_trips   = round(df["Total Trips"].astype(float).mean(),  1) if "Total Trips"  in df.columns else "—"
+    total_trips = int(df["Total Trips"].astype(float).sum())         if "Total Trips"  in df.columns else 0
+    avg_score   = round(df["Score"].astype(float).mean(),        1) if "Score"        in df.columns else "—"
 
     c2.metric("Avg Hours Online", f"{avg_hours}h")
     c3.metric("Avg Trips",        avg_trips)
     c4.metric("Total Trips",      total_trips)
+    c5.metric("Avg Score",        avg_score)
+
+    estimated_fuel_cost = total_trips * 5 * COST_PER_KM
+    st.caption(
+        f"⛽ Estimated fleet fuel cost this period: "
+        f"R{estimated_fuel_cost:,.2f} "
+        f"(based on {total_trips} trips × 5 km × R{COST_PER_KM}/km)"
+    )
 
     st.divider()
 
-    # ── Team breakdown ────────────────────────────────────
-    st.subheader("Team Breakdown")
+    # ── Hotspot Performance ───────────────────────────────
+    st.subheader("Hotspot Performance")
     team_cols = st.columns(len(TEAMS))
     for i, (team_name, info) in enumerate(TEAMS.items()):
-        t_df = df[df["Team"] == team_name]
+        t_df        = df[df["Team"] == team_name]
+        t_n         = len(t_df)
+        t_avg_score = round(t_df["Score"].astype(float).mean(), 1) if t_n and "Score" in t_df.columns else "—"
+        hotspot_key = info.get("hotspot", team_name)
+        hotspot_cfg = HOTSPOTS.get(hotspot_key, {})
+        doable_target = hotspot_cfg.get("doable_trips_target", "—")
         team_cols[i].metric(
             team_name,
-            f"{len(t_df)} drivers",
-            f"Leader: {info['leader']}"
+            f"{t_n} drivers",
+            f"Avg Score: {t_avg_score} | Target: {doable_target} trips"
         )
+        team_cols[i].caption(f"Leader: {info['leader']}")
 
     st.divider()
+
+    # ── Raw API response inspector (remove after confirming field names) ──
+    if st.session_state.get("uber_raw_response"):
+        with st.expander("🔍 Raw API Response (for debugging — remove later)"):
+            st.json(st.session_state["uber_raw_response"])
 
     # ── Preview table ─────────────────────────────────────
     with st.expander("📋 Preview Full Driver Table", expanded=True):
-        show_cols = ["Driver", "Team", "Hours Online", "Hours on Trip", "Total Trips"]
+        show_cols = ["Driver", "Team", "Hotspot", "Hours Online", "Hours on Trip",
+                     "Total Trips", "Score", "Status", "Coaching"]
         show_cols = [c for c in show_cols if c in df.columns]
         preview   = df[show_cols].copy()
         st.dataframe(
-            preview.sort_values("Hours Online", ascending=False)
+            preview.sort_values("Score", ascending=False)
                    .reset_index(drop=True),
             use_container_width=True,
             hide_index=True
@@ -248,17 +289,17 @@ if view == "admin":
     st.divider()
 
     # ── Save & publish ────────────────────────────────────
-    encode_cols = ["Driver", "Team", "Hours Online", "Hours on Trip",
+    encode_cols = ["Driver", "Team", "Hotspot", "Hours Online", "Hours on Trip",
                    "Total Trips", "Score", "Status", "Coaching"]
     encode_cols = [c for c in encode_cols if c in df.columns]
 
     payload = {
-        "fleet":       df[encode_cols].to_dict(orient="records"),
-        "week_info":   week_info,
-        "week_label":  week_label,
-        "updated_at":  date_only(),
-        "start_date":  start_date.isoformat(),
-        "end_date":    end_date.isoformat(),
+        "fleet":         df[encode_cols].to_dict(orient="records"),
+        "week_info":     week_info,
+        "week_label":    week_label,
+        "updated_at":    date_only(),
+        "start_date":    start_date.isoformat(),
+        "end_date":      end_date.isoformat(),
         "total_drivers": len(df),
     }
 
@@ -271,7 +312,6 @@ if view == "admin":
                 ok = save_fleet_data(payload)
             if ok:
                 st.success("✅ Data published! All links now show the latest data.")
-                # Clear fetched state so admin can fetch fresh next time
                 st.session_state["api_fetched"] = False
                 st.session_state["api_df"]      = None
             else:
@@ -324,6 +364,7 @@ GITHUB_TOKEN        = "ghp_yourTokenHere"
 GIST_ID             = "yourGistIdHere"
 UBER_CLIENT_ID      = "5syO_-GOEpq7Ia_TChV9-0X57VtoRlbK"
 UBER_CLIENT_SECRET  = "your_client_secret_here"
+UBER_ORG_UUID       = "8B4z_AZXs0G7Vto_3jq_bGHEfZ3iy78wmMjlJU_SnvhuBn71eN64PJdqgxbSxJGY5GyPghQ-PNsBLM5tuJfq5HBYb28tWmQYtrwV1bwXBxIDmtEPDDdWZD13dOaq6xt0_Q=="
 ```
 3. Click Save
         """)
@@ -369,17 +410,30 @@ elif view == "drivers":
     <div style="background:white;border-radius:16px;padding:28px 32px;
                 box-shadow:0 4px 20px rgba(0,0,0,.10);margin-bottom:18px;">
         <h2 style="margin:0 0 4px 0;color:#0f2027;">👤 {row['Driver']}</h2>
-        <p style="color:#555;margin:0 0 20px 0;font-size:15px;">
+        <p style="color:#555;margin:0 0 4px 0;font-size:15px;">
             Team: {row.get('Team', '—')}
+        </p>
+        <p style="color:#555;margin:0 0 20px 0;font-size:15px;">
+            Hotspot: {row.get('Hotspot', '—')}
         </p>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("### Your Stats This Period")
-    k1, k2, k3 = st.columns(3)
-    k1.metric("⏱️ Hours Online",   f"{row.get('Hours Online',  '—')}h")
-    k2.metric("🚗 Hours on Trip",  f"{row.get('Hours on Trip', '—')}h")
-    k3.metric("📦 Total Trips",     str(row.get("Total Trips",  "—")))
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("⏱️ Hours Online",  f"{row.get('Hours Online',  '—')}h")
+    k2.metric("🚗 Hours on Trip", f"{row.get('Hours on Trip', '—')}h")
+    k3.metric("📦 Total Trips",    str(row.get("Total Trips",  "—")))
+    k4.metric("⭐ Score",          str(row.get("Score",        "—")))
+
+    st.divider()
+
+    driver_status = row.get("Status", "—")
+    st.markdown(f"**Status: {driver_status}**")
+
+    coaching_msg = row.get("Coaching", "")
+    if coaching_msg:
+        st.info(coaching_msg)
 
     st.divider()
     st.caption(f"SparklingBlu Fleet Team 🚛  |  Updated: {updated}")
@@ -396,6 +450,11 @@ elif view == "fleet":
         st.warning("No data available. Ask the fleet manager to publish this week's stats.")
         st.stop()
 
+    # ── Self-service refresh ──────────────────────────────
+    if st.button("🔄 Refresh Data", use_container_width=False):
+        st.cache_data.clear()
+        st.rerun()
+
     df      = pd.DataFrame(data["fleet"])
     wi      = data.get("week_info", week_info)
     updated = data.get("updated_at", "")
@@ -410,13 +469,22 @@ elif view == "fleet":
     total       = len(df)
     avg_hours   = round(df["Hours Online"].astype(float).mean(), 1) if "Hours Online" in df.columns else "—"
     avg_trips   = round(df["Total Trips"].astype(float).mean(),  1) if "Total Trips"  in df.columns else "—"
-    total_trips = int(df["Total Trips"].astype(float).sum())        if "Total Trips"  in df.columns else "—"
+    total_trips = int(df["Total Trips"].astype(float).sum())         if "Total Trips"  in df.columns else 0
+    avg_score   = round(df["Score"].astype(float).mean(),        1) if "Score"        in df.columns else "—"
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Total Drivers",    total)
     c2.metric("Avg Hours Online", f"{avg_hours}h")
     c3.metric("Avg Trips",        avg_trips)
     c4.metric("Total Trips",      total_trips)
+    c5.metric("Avg Score",        avg_score)
+
+    estimated_fuel_cost = total_trips * 5 * COST_PER_KM
+    st.caption(
+        f"⛽ Estimated fleet fuel cost this period: "
+        f"R{estimated_fuel_cost:,.2f} "
+        f"(based on {total_trips} trips × 5 km × R{COST_PER_KM}/km)"
+    )
 
     st.divider()
 
@@ -437,6 +505,19 @@ elif view == "fleet":
                 insight_html(f"⏱️ <strong>{low_hrs} driver(s)</strong> with fewer than 10h online"),
                 unsafe_allow_html=True
             )
+        if "Score" in df.columns:
+            top_scorer       = df.loc[df["Score"].astype(float).idxmax(), "Driver"]
+            top_score_val    = df["Score"].astype(float).max()
+            top_performers_n = (df["Status"] == "Top Performer").sum()
+            st.markdown(
+                insight_html(f"⭐ <strong>Top Scorer:</strong> {top_scorer} — {top_score_val} pts"),
+                unsafe_allow_html=True
+            )
+            st.markdown(
+                insight_html(f"🥇 <strong>{top_performers_n} driver(s)</strong> with Top Performer status"),
+                unsafe_allow_html=True
+            )
+
     with i2:
         if "Total Trips" in df.columns:
             top_trips_driver = df.loc[df["Total Trips"].astype(float).idxmax(), "Driver"]
@@ -453,32 +534,43 @@ elif view == "fleet":
 
     st.divider()
 
-    # ── Team compliance ───────────────────────────────────
-    st.markdown("### Team Breakdown")
+    # ── Hotspot Breakdown ─────────────────────────────────
+    st.markdown("### Hotspot Breakdown")
     t_cols = st.columns(len(TEAMS))
     for i, (tn, info) in enumerate(TEAMS.items()):
-        t_df      = df[df["Team"] == tn]
-        t_n       = len(t_df)
-        t_avg_hrs = round(t_df["Hours Online"].astype(float).mean(), 1) if t_n and "Hours Online" in t_df.columns else "—"
-        t_cols[i].metric(tn, f"{t_n} drivers", f"Avg {t_avg_hrs}h online")
+        t_df        = df[df["Team"] == tn]
+        t_n         = len(t_df)
+        t_avg_hrs   = round(t_df["Hours Online"].astype(float).mean(), 1) if t_n and "Hours Online" in t_df.columns else "—"
+        t_avg_score = round(t_df["Score"].astype(float).mean(),        1) if t_n and "Score"        in t_df.columns else "—"
+        hotspot_key = info.get("hotspot", tn)
+        hotspot_cfg = HOTSPOTS.get(hotspot_key, {})
+        doable_target = hotspot_cfg.get("doable_trips_target", "—")
+        t_cols[i].metric(
+            tn,
+            f"{t_n} drivers",
+            f"Score: {t_avg_score} | Hrs: {t_avg_hrs}h | Target: {doable_target}"
+        )
 
     st.divider()
 
     # ── Driver search table ───────────────────────────────
     st.markdown("### Driver Search")
-    search  = st.text_input("Search by name or team:", placeholder="e.g. John or Team LB")
+    search  = st.text_input("Search by name, team, or hotspot:", placeholder="e.g. John or Team LB or Sandton")
     display = df.copy()
     if search:
         mask = (
             display["Driver"].str.lower().str.contains(search.lower(), na=False) |
             display["Team"].str.lower().str.contains(search.lower(), na=False)
         )
+        if "Hotspot" in display.columns:
+            mask = mask | display["Hotspot"].str.lower().str.contains(search.lower(), na=False)
         display = display[mask]
 
-    show_cols = ["Driver", "Team", "Hours Online", "Hours on Trip", "Total Trips"]
+    show_cols = ["Driver", "Team", "Hotspot", "Hours Online", "Hours on Trip",
+                 "Total Trips", "Score", "Status"]
     show_cols = [c for c in show_cols if c in display.columns]
     st.dataframe(
-        display[show_cols].sort_values("Hours Online", ascending=False).reset_index(drop=True),
+        display[show_cols].sort_values("Score", ascending=False).reset_index(drop=True),
         use_container_width=True,
         hide_index=True
     )
@@ -503,8 +595,10 @@ elif view == "team":
         else st.selectbox("Select your team:", list(TEAMS.keys()))
     )
 
-    leader  = TEAMS[selected_team]["leader"]
-    team_df = df[df["Team"] == selected_team].copy()
+    leader      = TEAMS[selected_team]["leader"]
+    hotspot_key = TEAMS[selected_team].get("hotspot", selected_team)
+    hotspot_cfg = HOTSPOTS.get(hotspot_key, {})
+    team_df     = df[df["Team"] == selected_team].copy()
 
     st.markdown(f"# 👥 {selected_team} — Weekly Performance")
     st.markdown(
@@ -517,24 +611,39 @@ elif view == "team":
         st.warning("No drivers found for this team in the current data.")
         st.stop()
 
-    t_total   = len(team_df)
-    t_avg_hrs = round(team_df["Hours Online"].astype(float).mean(), 1) if "Hours Online" in team_df.columns else "—"
-    t_avg_trp = round(team_df["Total Trips"].astype(float).mean(),  1) if "Total Trips"  in team_df.columns else "—"
-    t_best    = (team_df.loc[team_df["Hours Online"].astype(float).idxmax(), "Driver"]
-                 if "Hours Online" in team_df.columns else "—")
+    t_total     = len(team_df)
+    t_avg_hrs   = round(team_df["Hours Online"].astype(float).mean(), 1) if "Hours Online" in team_df.columns else "—"
+    t_avg_trp   = round(team_df["Total Trips"].astype(float).mean(),  1) if "Total Trips"  in team_df.columns else "—"
+    t_avg_score = round(team_df["Score"].astype(float).mean(),        1) if "Score"        in team_df.columns else "—"
+    t_best      = (team_df.loc[team_df["Hours Online"].astype(float).idxmax(), "Driver"]
+                   if "Hours Online" in team_df.columns else "—")
 
-    m1, m2, m3, m4 = st.columns(4)
+    m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Team Size",        t_total)
     m2.metric("Avg Hours Online", f"{t_avg_hrs}h")
     m3.metric("Avg Trips",        t_avg_trp)
     m4.metric("Most Hours",       t_best)
+    m5.metric("Avg Score",        t_avg_score)
 
     st.divider()
 
-    show_cols = ["Driver", "Hours Online", "Hours on Trip", "Total Trips"]
+    # ── Hotspot strategy expander ─────────────────────────
+    if hotspot_cfg:
+        with st.expander(f"📍 Hotspot Strategy — {hotspot_key}", expanded=False):
+            hc1, hc2, hc3 = st.columns(3)
+            hc1.markdown(f"**Anchor:** {hotspot_cfg.get('anchor', '—')}")
+            hc1.markdown(f"**Primary Type:** {hotspot_cfg.get('primary_type', '—')}")
+            hc2.markdown(f"**Shift Hours:** {hotspot_cfg.get('shift_hours', '—')}")
+            hc2.markdown(f"**Trips Target:** {hotspot_cfg.get('doable_trips_target', '—')} trips")
+            hc3.markdown(f"**Daily Yield:** {hotspot_cfg.get('daily_yield', '—')}")
+            hc3.markdown(f"**Fuel Rule:** {hotspot_cfg.get('fuel_rule', '—')}")
+
+    # ── Team driver table ─────────────────────────────────
+    show_cols = ["Driver", "Hours Online", "Hours on Trip", "Total Trips",
+                 "Score", "Status", "Coaching"]
     show_cols = [c for c in show_cols if c in team_df.columns]
     st.dataframe(
-        team_df[show_cols].sort_values("Hours Online", ascending=False).reset_index(drop=True),
+        team_df[show_cols].sort_values("Score", ascending=False).reset_index(drop=True),
         use_container_width=True,
         hide_index=True
     )
