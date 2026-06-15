@@ -45,7 +45,7 @@ h1,h2,h3{color:#0f2027!important;}
 """, unsafe_allow_html=True)
 
 # ── CONSTANTS ─────────────────────────────────────────────────────────────────
-BASE_URL = "https://sparklingblu-public.streamlit.app"
+BASE_URL = "https://sparklingblu-drivers.streamlit.app"
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 def date_only():
