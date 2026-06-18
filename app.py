@@ -47,8 +47,8 @@ h1,h2,h3{color:#0f2027!important;}
 # ── CONSTANTS ─────────────────────────────────────────────────────────────────
 # ⚠️ UPDATE THESE once app_drivers.py and app_management.py are redeployed —
 # each is a SEPARATE Streamlit Cloud app with its own URL.
-DRIVERS_BASE_URL    = "https://PASTE-YOUR-APP-DRIVERS-URL-HERE.streamlit.app"
-MANAGEMENT_BASE_URL = "https://PASTE-YOUR-APP-MANAGEMENT-URL-HERE.streamlit.app"
+DRIVERS_BASE_URL    = "https://fleet-app-ctqw8bt8iwuvemoeeabfts.streamlit.app"
+MANAGEMENT_BASE_URL = "https://fleet-app-xrjqjcdq7hsappx7u9hkamq.streamlit.app"
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 def date_only():
