@@ -122,6 +122,45 @@ HOTSPOT_WEEKLY_TARGETS = {
         "weekly_trips_max": 50,
     },
 }
+# Hotspot proximity map — used by coaching engine to recommend a NEARBY
+# busier hotspot when a driver is behind pace, rather than any random
+# hotspot fleet-wide. Based on Gauteng geography (Midrand/Kempton Park
+# are both north-east; Soweto/JHB CBD/Roodepoort are south/west; Norwood
+# sits between JHB CBD and Midrand).
+#
+# ⚠️ REVIEW THIS — adjust pairings based on actual driver travel patterns.
+NEARBY_HOTSPOTS = {
+    "Midrand Hub": ["Kempton Park Cluster", "Norwood / Orange Grove Node"],
+    "Kempton Park Cluster": ["Midrand Hub", "JHB CBD / Braamfontein Node"],
+    "Soweto Cluster": ["Roodepoort / West Rand Cluster", "JHB CBD / Braamfontein Node"],
+    "JHB CBD / Braamfontein Node": ["Norwood / Orange Grove Node", "Soweto Cluster", "Kempton Park Cluster"],
+    "Roodepoort / West Rand Cluster": ["Soweto Cluster"],
+    "Norwood / Orange Grove Node": ["JHB CBD / Braamfontein Node", "Midrand Hub"],
+}
+
+
+def get_busier_nearby_hotspot(current_hotspot):
+    """
+    Returns the name of the nearest hotspot with a HIGHER weekly trips
+    target than the driver's current hotspot, or None if their current
+    hotspot is already the busiest nearby option.
+    """
+    if current_hotspot not in HOTSPOT_WEEKLY_TARGETS:
+        return None
+
+    current_target = HOTSPOT_WEEKLY_TARGETS[current_hotspot]["weekly_trips_min"]
+    candidates = NEARBY_HOTSPOTS.get(current_hotspot, [])
+
+    best_name   = None
+    best_target = current_target
+
+    for candidate in candidates:
+        cand_target = HOTSPOT_WEEKLY_TARGETS.get(candidate, {}).get("weekly_trips_min", 0)
+        if cand_target > best_target:
+            best_target = cand_target
+            best_name   = candidate
+
+    return best_name
 
 # Fuel cost constants (Inland 95 Petrol @ R28.06/L)
 FUEL_PRICE_PER_LITRE = 28.06

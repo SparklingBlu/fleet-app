@@ -45,16 +45,27 @@ h1,h2,h3{color:#0f2027!important;}
 """, unsafe_allow_html=True)
 
 # ── CONSTANTS ─────────────────────────────────────────────────────────────────
-BASE_URL = "https://sparklingblu-drivers.streamlit.app"
+# ⚠️ UPDATE THESE once app_drivers.py and app_management.py are redeployed —
+# each is a SEPARATE Streamlit Cloud app with its own URL.
+DRIVERS_BASE_URL    = "https://PASTE-YOUR-APP-DRIVERS-URL-HERE.streamlit.app"
+MANAGEMENT_BASE_URL = "https://PASTE-YOUR-APP-MANAGEMENT-URL-HERE.streamlit.app"
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 def date_only():
     return datetime.now().strftime("%d %b %Y")
 
 def make_link(view, team=None):
+    """
+    Drivers and Team links point at app_drivers.py.
+    The Management link points at app_management.py directly (no query
+    params needed there — it's a single-page app with its own password gate).
+    """
+    if view == "fleet":
+        return MANAGEMENT_BASE_URL
+
     if team:
-        return f"{BASE_URL}/?view={view}&team={team.replace(' ', '+')}"
-    return f"{BASE_URL}/?view={view}"
+        return f"{DRIVERS_BASE_URL}/?view={view}&team={team.replace(' ', '+')}"
+    return f"{DRIVERS_BASE_URL}/?view={view}"
 
 def banner_html(text):
     return (
@@ -104,25 +115,42 @@ def process_api_dataframe(raw_df, week_info):
     # Team assignment (reuses existing teams.py logic)
     df = match_drivers_to_teams(df)
 
-    # Hotspot assignment
-    df["Hotspot"] = df["Driver"].apply(get_hotspot_for_driver)
+    # Hotspot assignment — derived from each driver's Team, since teams.py
+    # already maps drivers to teams and each team config carries a "hotspot"
+    # key (see Hotspot Performance section in admin view). The hotspots.py
+    # get_hotspot_for_driver() stub always returns None, so we resolve the
+    # hotspot via TEAMS instead — this matches what's already working in
+    # your admin dashboard's Hotspot Performance cards.
+    def resolve_hotspot(team_name):
+        return TEAMS.get(team_name, {}).get("hotspot", team_name)
+
+    df["Hotspot"] = df["Team"].apply(resolve_hotspot)
 
     scores    = []
     statuses  = []
     coachings = []
 
+    progress = week_info.get("progress", 0.0)
+
     for _, row in df.iterrows():
         try:
             hours_online = float(row.get("Hours Online", 0) or 0)
             trips        = int(float(row.get("Total Trips", 0) or 0))
+            hotspot_name = row.get("Hotspot")
 
-            score, status = calculate_performance_score(hours_online, trips, week_info)
-            remaining     = get_remaining_targets(hours_online, trips, week_info)
-            coaching      = get_coaching_message(status, remaining, week_info)
-        except Exception:
+            score, status = calculate_performance_score(
+                hours_online, trips, report_days=1, hotspot_name=hotspot_name
+            )
+            remaining = get_remaining_targets(
+                hours_online, trips, progress, report_days=1, hotspot_name=hotspot_name
+            )
+            coaching = get_coaching_message(
+                score, remaining, week_info, hotspot_name=hotspot_name
+            )
+        except Exception as e:
             score    = 0
             status   = "—"
-            coaching = "Scoring unavailable."
+            coaching = f"Scoring unavailable ({e})."
 
         scores.append(score)
         statuses.append(status)
@@ -376,9 +404,6 @@ UBER_ORG_UUID       = "8B4z_AZXs0G7Vto_3jq_bGHEfZ3iy78wmMjlJU_SnvhuBn71eN64PJdqg
 elif view == "drivers":
     data = load_fleet_data()
     st.markdown("# 🚛 SparklingBlu — Your Weekly Stats")
-    st.write("DEBUG - Data loaded:", data is not None)
-    if data:
-        st.write("DEBUG - Drivers count:", len(data.get("fleet", [])))
 
     if not data:
         st.warning("Stats not available yet. Ask your fleet manager to publish this week's data.")
@@ -413,9 +438,6 @@ elif view == "drivers":
     <div style="background:white;border-radius:16px;padding:28px 32px;
                 box-shadow:0 4px 20px rgba(0,0,0,.10);margin-bottom:18px;">
         <h2 style="margin:0 0 4px 0;color:#0f2027;">👤 {row['Driver']}</h2>
-        <p style="color:#555;margin:0 0 4px 0;font-size:15px;">
-            Team: {row.get('Team', '—')}
-        </p>
         <p style="color:#555;margin:0 0 20px 0;font-size:15px;">
             Hotspot: {row.get('Hotspot', '—')}
         </p>
@@ -446,8 +468,29 @@ elif view == "drivers":
 # FLEET / MANAGEMENT VIEW
 # ════════════════════════════════════════════════════════
 elif view == "fleet":
-    data = load_fleet_data()
     st.markdown("# 📊 SparklingBlu — Fleet Performance")
+
+    # ── Password gate ──────────────────────────────────────
+    if not st.session_state.get("fleet_authenticated", False):
+        st.info("🔒 This view is restricted to management.")
+        pwd = st.text_input("Enter management password:", type="password")
+        submit = st.button("Unlock", type="primary")
+
+        if submit:
+            try:
+                correct_password = st.secrets["MANAGEMENT_PASSWORD"]
+            except KeyError:
+                st.error("MANAGEMENT_PASSWORD not configured in Streamlit Secrets. Contact admin.")
+                st.stop()
+
+            if pwd == correct_password:
+                st.session_state["fleet_authenticated"] = True
+                st.rerun()
+            else:
+                st.error("Incorrect password.")
+        st.stop()
+
+    data = load_fleet_data()
 
     if not data:
         st.warning("No data available. Ask the fleet manager to publish this week's stats.")
@@ -558,18 +601,15 @@ elif view == "fleet":
 
     # ── Driver search table ───────────────────────────────
     st.markdown("### Driver Search")
-    search  = st.text_input("Search by name, team, or hotspot:", placeholder="e.g. John or Team LB or Sandton")
+    search  = st.text_input("Search by name or hotspot:", placeholder="e.g. John or Sandton")
     display = df.copy()
     if search:
-        mask = (
-            display["Driver"].str.lower().str.contains(search.lower(), na=False) |
-            display["Team"].str.lower().str.contains(search.lower(), na=False)
-        )
+        mask = display["Driver"].str.lower().str.contains(search.lower(), na=False)
         if "Hotspot" in display.columns:
             mask = mask | display["Hotspot"].str.lower().str.contains(search.lower(), na=False)
         display = display[mask]
 
-    show_cols = ["Driver", "Team", "Hotspot", "Hours Online", "Hours on Trip",
+    show_cols = ["Driver", "Hotspot", "Hours Online", "Hours on Trip",
                  "Total Trips", "Score", "Status"]
     show_cols = [c for c in show_cols if c in display.columns]
     st.dataframe(

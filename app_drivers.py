@@ -1,6 +1,8 @@
-# app_public.py — SparklingBlu Fleet Management System
-# PUBLIC VIEWS: drivers | fleet | team
+# app_drivers.py — SparklingBlu Fleet Management System
+# PUBLIC VIEWS: drivers | team
 # Reads published data from GitHub Gist — no admin access, no API calls
+# note: the password-protected Management/Fleet view lives in app_management.py,
+# deployed as a SEPARATE Streamlit Cloud app. Do not add a "fleet" view here.
 
 import streamlit as st
 import pandas as pd
@@ -98,7 +100,7 @@ if view == "drivers":
                 box-shadow:0 4px 20px rgba(0,0,0,.10);margin-bottom:18px;">
         <h2 style="margin:0 0 4px 0;color:#0f2027;">👤 {row['Driver']}</h2>
         <p style="color:#555;margin:0 0 20px 0;font-size:15px;">
-            Team: {row.get('Team', '—')} | Hotspot: {row.get('Hotspot', '—')}
+            Hotspot: {row.get('Hotspot', '—')}
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -117,104 +119,6 @@ if view == "drivers":
     
     st.divider()
     st.caption(f"SparklingBlu Fleet Team 🚛  |  Updated: {updated}")
-
-
-# ════════════════════════════════════════════════════════
-# FLEET / MANAGEMENT VIEW
-# ════════════════════════════════════════════════════════
-elif view == "fleet":
-    data = load_fleet_data()
-    st.markdown("# 📊 SparklingBlu — Fleet Performance")
-
-    if not data:
-        st.warning("No data available. Ask the fleet manager to publish this week's stats.")
-        st.stop()
-
-    df      = pd.DataFrame(data["fleet"])
-    updated = data.get("updated_at", "")
-
-    st.markdown(f"*Management Overview  |  Updated: {updated}*")
-    st.divider()
-
-    # Refresh button
-    if st.button("🔄 Refresh Latest Data", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
-
-    # ── Fleet overview metrics ────────────────────────────
-    total       = len(df)
-    avg_hours   = round(df["Hours Online"].astype(float).mean(), 1) if "Hours Online" in df.columns else "—"
-    avg_trips   = round(df["Total Trips"].astype(float).mean(),  1) if "Total Trips"  in df.columns else "—"
-    total_trips = int(df["Total Trips"].astype(float).sum())        if "Total Trips"  in df.columns else "—"
-    avg_score   = round(df["Score"].mean(), 1) if "Score" in df.columns else "—"
-
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Total Drivers",    total)
-    c2.metric("Avg Hours Online", f"{avg_hours}h")
-    c3.metric("Avg Trips",        avg_trips)
-    c4.metric("Total Trips",      total_trips)
-    c5.metric("Avg Score",        f"{avg_score}%")
-
-    st.divider()
-
-    # ── Key Insights ──────────────────────────────────────
-    st.markdown("### Key Insights")
-    i1, i2 = st.columns(2)
-
-    with i1:
-        if "Hours Online" in df.columns:
-            top_driver = df.loc[df["Hours Online"].astype(float).idxmax(), "Driver"]
-            top_hours  = df["Hours Online"].astype(float).max()
-            st.markdown(
-                insight_html(f"🏆 <strong>Most Hours Online:</strong> {top_driver} — {top_hours}h"),
-                unsafe_allow_html=True
-            )
-        if "Score" in df.columns:
-            top_scorer = df.loc[df["Score"].idxmax(), "Driver"]
-            top_score_val = df["Score"].max()
-            st.markdown(
-                insight_html(f"⭐ <strong>Top Scorer:</strong> {top_scorer} — {top_score_val}%"),
-                unsafe_allow_html=True
-            )
-    with i2:
-        if "Total Trips" in df.columns:
-            top_trips_driver = df.loc[df["Total Trips"].astype(float).idxmax(), "Driver"]
-            top_trips_val    = int(df["Total Trips"].astype(float).max())
-            st.markdown(
-                insight_html(f"📦 <strong>Most Trips:</strong> {top_trips_driver} — {top_trips_val} trips"),
-                unsafe_allow_html=True
-            )
-        if "Status" in df.columns:
-            top_performers = (df["Status"] == "Top Performer").sum()
-            st.markdown(
-                insight_html(f"🎯 <strong>{top_performers} Top Performer(s)</strong> on track"),
-                unsafe_allow_html=True
-            )
-
-    st.divider()
-
-    # ── Driver search table ───────────────────────────────
-    st.markdown("### Driver Search")
-    search  = st.text_input("Search by name, team, or hotspot:", placeholder="e.g. John or Midrand")
-    display = df.copy()
-    if search:
-        mask = (
-            display["Driver"].str.lower().str.contains(search.lower(), na=False) |
-            display["Team"].str.lower().str.contains(search.lower(), na=False) |
-            display.get("Hotspot", pd.Series()).str.lower().str.contains(search.lower(), na=False)
-        )
-        display = display[mask]
-
-    show_cols = ["Driver", "Team", "Hotspot", "Hours Online", "Hours on Trip", 
-                 "Total Trips", "Score", "Status"]
-    show_cols = [c for c in show_cols if c in display.columns]
-    st.dataframe(
-        display[show_cols].sort_values("Score", ascending=False).reset_index(drop=True),
-        use_container_width=True,
-        hide_index=True
-    )
-    st.caption(f"SparklingBlu Fleet  |  Updated: {updated}")
-
 
 # ════════════════════════════════════════════════════════
 # TEAM VIEW

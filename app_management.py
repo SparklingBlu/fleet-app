@@ -303,9 +303,42 @@ def get_sparky_response(question: str, df: pd.DataFrame) -> str:
 
 
 # ─────────────────────────────────────────────
+# PASSWORD GATE
+# ─────────────────────────────────────────────
+def check_password():
+    """Returns True only if the correct management password has been entered."""
+    if st.session_state.get("mgmt_authenticated", False):
+        return True
+
+    st.title("🔒 SparklingBlu — Management Access")
+    st.caption("This dashboard is restricted to management.")
+
+    pwd    = st.text_input("Enter management password:", type="password")
+    submit = st.button("Unlock", type="primary")
+
+    if submit:
+        try:
+            correct_password = st.secrets["MANAGEMENT_PASSWORD"]
+        except KeyError:
+            st.error("MANAGEMENT_PASSWORD not configured in Streamlit Secrets. Contact admin.")
+            st.stop()
+
+        if pwd == correct_password:
+            st.session_state["mgmt_authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
+
+    return False
+
+
+# ─────────────────────────────────────────────
 # MAIN APP
 # ─────────────────────────────────────────────
 def main():
+    if not check_password():
+        st.stop()
+
     # ── Header ──────────────────────────────
     col_title, col_refresh = st.columns([5, 1])
     with col_title:
