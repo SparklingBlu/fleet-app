@@ -1,120 +1,119 @@
-# SparklingBlu Moto Fleet Performance Tracker
-# =============================================
+# SparklingBlu Fleet Management System
 
-## Overview
+A multi-app Streamlit platform for managing and coaching a vehicle-supplier driver
+fleet operating on Uber's platform (Gauteng, South Africa). Pulls live performance
+data from the Uber API, scores drivers against weekly targets, and publishes
+shareable links for drivers, team leaders, and management — no logins required for
+drivers, password-protected for management.
 
-A Streamlit-based driver performance tracking system that replaces PDF reports with shareable links. Drivers, team leaders, and management can access their stats anytime via unique URLs.
+## Live Apps
 
-## Features
+| View | Purpose | Link |
+|---|---|---|
+| **Admin** | Fetch live Uber data, review, publish | *(internal — admin only)* |
+| **Drivers** | Drivers look up their own weekly stats | `app.py?view=drivers` |
+| **Team** | Team leaders view their team's performance | `app.py?view=team&team=TeamName` |
+| **Management** | Full fleet dashboard, insights, Sparky chatbot | `app_management.py` (password protected) |
 
-- **CSV Upload** — Upload Uber driver data and process instantly
-- **Shareable Links** — Generate URLs for drivers, teams, and management
-- **Real-time Stats** — Drivers see their KPIs and remaining targets
-- **Team Management** — View team performance and compliance
-- **Fleet Overview** — Management dashboard with insights and search
-- **Data Backup** — Export processed data for historical tracking
-- **Error Handling** — Graceful handling of corrupted/invalid links
-- **Data Freshness** — Shows when data was last generated
-
-## Setup Instructions
-
-### 1. Requirements
-
-- Python 3.10+
-- Streamlit Cloud account (free)
-
-### 2. Files Required
-
-Copy these 3 files to your GitHub repository:
+## Architecture
 
 ```
-app.py      — Main application
-engine.py   — Scoring and calculation logic
-teams.py    — Team configuration
+app.py              # Admin panel — fetches Uber API data, scores drivers, publishes to Gist
+                     # Also serves the public Drivers, Team, and Fleet (redirect) views via ?view=
+app_management.py   # Password-protected management dashboard (insights, hotspots, Sparky)
+engine.py            # Scoring engine — weekly targets, performance score, coaching messages
+teams.py             # Team/hotspot definitions and driver-to-team matching
+storage.py           # Read/write fleet data to a GitHub Gist (shared state across apps)
+uber_client.py       # Uber API client — auth + fetch driver metrics
 ```
 
-### 3. Deploy to Streamlit Cloud
+### Data flow
 
-1. Create a GitHub repository
-2. Push the 3 files above
-3. Go to [share.streamlit.io](https://share.streamlit.io)
-4. Connect your GitHub repo
-5. Deploy!
+1. **Admin** (`app.py`) fetches live driver metrics from the Uber API for a chosen
+   date range.
+2. Each driver is scored (`engine.py`) against universal weekly targets —
+   **50 hours online / 35 trips** — and assigned a status:
+   `Top Performer (85+) → Good (70–84) → Needs Improvement (50–69) → Urgent Attention (<50)`.
+3. Admin reviews the table, then **publishes** the dataset to a GitHub Gist
+   (`storage.py`). This Gist is the single source of truth shared between all apps.
+4. **Drivers**, **Team**, and **Management** views all read from that same Gist —
+   so every permanent link always shows the latest published data, with zero
+   redeploys needed after publishing.
 
-### 4. Configure Secrets
+### Views in `app.py`
 
-In Streamlit Cloud:
+- `?view=admin` — fetch, score, and publish (default)
+- `?view=drivers` — driver self-lookup by name
+- `?view=team&team=<name>` — team leader dashboard
+- `?view=fleet` — redirects to the management app
 
-1. Go to your app settings → Secrets
-2. Add your deployed app URL:
-   ```
-   APP_URL = https://your-app-name.streamlit.app
-   ```
+### Management dashboard (`app_management.py`)
 
-### 5. Update Teams
+Password-gated (`MANAGEMENT_PASSWORD` in Streamlit Secrets). Includes:
+- Fleet overview metrics (drivers, hours, trips, score, estimated fuel cost)
+- Key insights (top performers, drivers below threshold)
+- Hotspot/team breakdown
+- SBV driver tracking (hardcoded roster matched via fuzzy name matching)
+- Full driver performance table with day-aware coaching messages
+- **Sparky** — a simple rule-based fleet Q&A chatbot
+- CSV export
 
-Edit `teams.py` to add/remove drivers or change team assignments. The file is heavily commented for easy editing.
+## Setup
 
-## Workflow
+### 1. GitHub Gist (shared data store)
+1. Create a personal access token with `gist` scope at
+   [github.com/settings/tokens](https://github.com/settings/tokens).
+2. Create a secret Gist at [gist.github.com](https://gist.github.com) named
+   `fleet_data.json` with content `{}`.
+3. Copy the Gist ID from its URL.
 
-### Admin (You)
-1. Download CSV from Uber dashboard
-2. Upload to the app
-3. Copy generated links
-4. Share via WhatsApp
+### 2. Uber API credentials
+Requires an approved Uber Fleet API app with `vehicle_suppliers.organizations.read`
+and `solutions.suppliers.metrics.read` scopes.
 
-### Drivers
-1. Click the driver link
-2. Search for their name
-3. View their stats and targets
+### 3. Streamlit Secrets
+In each deployed app's **Settings → Secrets**:
 
-### Team Leaders
-1. Click the team link
-2. View team performance
-3. Identify drivers needing coaching
-
-### Management
-1. Click the management link
-2. View fleet-wide insights
-3. Search any driver's stats
-
-## File Structure
-
-```
-/
-├── app.py          # Main Streamlit app (all views)
-├── engine.py       # Scoring algorithms
-├── teams.py        # Team configuration
-├── README.md       # This file
-└── .streamlit/
-    └── config.toml # Streamlit settings (optional)
-```
-
-## Updating Teams
-
-Open `teams.py` and edit the `TEAMS` dictionary:
-
-```python
-TEAMS = {
-    "Team BK": {
-        "leader": "Leader Name",
-        "drivers": ["Driver One", "Driver Two"],
-    },
-    # Add more teams...
-}
+```toml
+GITHUB_TOKEN         = "ghp_..."
+GIST_ID              = "..."
+UBER_CLIENT_ID       = "..."
+UBER_CLIENT_SECRET   = "..."
+UBER_ORG_UUID        = "..."
+MANAGEMENT_PASSWORD  = "..."   # app_management.py only
 ```
 
-## Troubleshooting
+> ⚠️ Never commit real secrets to this repo. Rotate immediately if a credential is
+> ever pasted into a file, screenshot, or commit by mistake.
 
-### Links not working?
-Make sure `APP_URL` is set in Streamlit secrets.
+### 4. Run locally
 
-### Driver not found?
-Check spelling in `teams.py` — matching is case-insensitive.
+```bash
+pip install -r requirements.txt
+streamlit run app.py              # Admin / Drivers / Team
+streamlit run app_management.py   # Management dashboard
+```
 
-### Data looks old?
-Links contain snapshot data. Generate new links weekly.
+## Weekly Targets
 
-## Support
+Universal targets, no hotspot-dependent scaling:
 
-For issues or feature requests, contact your fleet manager.
+- **50 hours online** per week
+- **35 trips** per week
+- Daily pace ≈ 7.14h / 5 trips/day
+
+Coaching tone escalates across the week (friendly early-week nudge →
+midweek pace check → urgent Fri/Sat push → Sunday recap).
+
+## Tech Stack
+
+Python · Streamlit · pandas · Uber Fleet API · GitHub Gist (data layer) ·
+Streamlit Community Cloud (hosting)
+
+## Notes
+
+- Drivers and team leaders need **no login** — links are permanent and
+  always reflect the latest published data.
+- Management dashboard is password protected.
+- Fuel cost estimates use a fixed `R/km` rate and 5km/trip average — update
+  `FUEL_COST_PER_KM` in `app.py` when local fuel prices change.

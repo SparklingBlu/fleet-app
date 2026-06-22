@@ -1,12 +1,21 @@
 # app.py — SparklingBlu Fleet Management System
-# Phase 1: Live Uber API data | Views: admin | drivers | fleet | team
+# Views: admin | drivers | fleet | team
+# KPI: 50 Hours Online / 35 Trips per week (universal targets)
 
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from engine import get_week_progress, calculate_performance_score, get_remaining_targets, get_coaching_message
-from teams import TEAMS, match_drivers_to_teams, get_hotspot_for_driver
-from hotspots import HOTSPOTS, PEAK_BLOCKS, COST_PER_KM, FUEL_PRICE_PER_LITRE
+from engine import (
+    get_week_progress,
+    calculate_performance_score,
+    get_remaining_targets,
+    get_coaching_message,
+    WEEKLY_HOURS_TARGET,
+    WEEKLY_TRIPS_TARGET,
+    DAILY_HOURS_TARGET,
+    DAILY_TRIPS_TARGET,
+)
+from teams import TEAMS, match_drivers_to_teams
 from storage import save_fleet_data, load_fleet_data, is_storage_configured
 from uber_client import fetch_live_driver_data, UberAPIError
 
@@ -45,24 +54,19 @@ h1,h2,h3{color:#0f2027!important;}
 """, unsafe_allow_html=True)
 
 # ── CONSTANTS ─────────────────────────────────────────────────────────────────
-# ⚠️ UPDATE THESE once app_drivers.py and app_management.py are redeployed —
-# each is a SEPARATE Streamlit Cloud app with its own URL.
+# ⚠️ UPDATE THESE once app_drivers.py and app_management.py are redeployed
 DRIVERS_BASE_URL    = "https://fleet-app-ctqw8bt8iwuvemoeeabfts.streamlit.app"
 MANAGEMENT_BASE_URL = "https://fleet-app-xrjqjcdq7hsappx7u9hkamq.streamlit.app"
+
+FUEL_COST_PER_KM = 2.53   # R/km — update when fuel price changes
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 def date_only():
     return datetime.now().strftime("%d %b %Y")
 
 def make_link(view, team=None):
-    """
-    Drivers and Team links point at app_drivers.py.
-    The Management link points at app_management.py directly (no query
-    params needed there — it's a single-page app with its own password gate).
-    """
     if view == "fleet":
         return MANAGEMENT_BASE_URL
-
     if team:
         return f"{DRIVERS_BASE_URL}/?view={view}&team={team.replace(' ', '+')}"
     return f"{DRIVERS_BASE_URL}/?view={view}"
@@ -89,46 +93,29 @@ def link_html(url):
         f'margin-top:6px;display:block;letter-spacing:0.3px;">{url}</div>'
     )
 
-def sbv_bar_html(line1, line2=""):
-    return (
-        f'<div style="background:white;border-radius:12px;padding:16px 22px;'
-        f'border-left:5px solid #2c5364;margin-bottom:16px;color:#0f2027;">'
-        f'{line1}'
-        + (f'<br><span style="color:#0f2027;font-size:13px;">{line2}</span>' if line2 else "")
-        + '</div>'
-    )
 
 # ── PROCESS API DATAFRAME ─────────────────────────────────────────────────────
 def process_api_dataframe(raw_df, week_info):
     """
-    Takes a DataFrame from uber_client.fetch_live_driver_data() and enriches it
-    with team assignments, hotspot, and calculated performance scores.
+    Enriches raw Uber API DataFrame with team assignment, score, status,
+    and coaching message.
 
-    Phase 1 columns expected from API:
-        Driver, Hours Online, Hours on Trip, Total Trips
+    Expected input columns: Driver, Hours Online, Hours on Trip, Total Trips
+    Added columns:          Team, Score, Status, Coaching,
+                            Remaining Hours, Remaining Trips
 
-    Columns added here:
-        Team, Hotspot, Score, Status, Coaching
+    Uses universal targets (50h / 35 trips) — no hotspot dependency.
     """
     df = raw_df.copy()
 
-    # Team assignment (reuses existing teams.py logic)
+    # Team assignment
     df = match_drivers_to_teams(df)
-
-    # Hotspot assignment — derived from each driver's Team, since teams.py
-    # already maps drivers to teams and each team config carries a "hotspot"
-    # key (see Hotspot Performance section in admin view). The hotspots.py
-    # get_hotspot_for_driver() stub always returns None, so we resolve the
-    # hotspot via TEAMS instead — this matches what's already working in
-    # your admin dashboard's Hotspot Performance cards.
-    def resolve_hotspot(team_name):
-        return TEAMS.get(team_name, {}).get("hotspot", team_name)
-
-    df["Hotspot"] = df["Team"].apply(resolve_hotspot)
 
     scores    = []
     statuses  = []
     coachings = []
+    rem_hours = []
+    rem_trips = []
 
     progress = week_info.get("progress", 0.0)
 
@@ -136,31 +123,41 @@ def process_api_dataframe(raw_df, week_info):
         try:
             hours_online = float(row.get("Hours Online", 0) or 0)
             trips        = int(float(row.get("Total Trips", 0) or 0))
-            hotspot_name = row.get("Hotspot")
 
+            # CHANGE 2 — score with fixed universal targets, report_days=1
             score, status = calculate_performance_score(
-                hours_online, trips, report_days=1, hotspot_name=hotspot_name
+                hours_online, trips, report_days=1
             )
+            # CHANGE 4 — remaining targets based on weekly pace
             remaining = get_remaining_targets(
-                hours_online, trips, progress, report_days=1, hotspot_name=hotspot_name
+                hours_online, trips, progress, report_days=1
             )
-            coaching = get_coaching_message(
-                score, remaining, week_info, hotspot_name=hotspot_name
-            )
+            # CHANGE 5 — coaching with clear current/remaining numbers
+            coaching = get_coaching_message(score, remaining, week_info)
+
         except Exception as e:
-            score    = 0
-            status   = "—"
-            coaching = f"Scoring unavailable ({e})."
+            score     = 0
+            status    = "—"
+            coaching  = f"Scoring unavailable ({e})."
+            remaining = {
+                "hours_needed": 0, "trips_needed": 0,
+                "hours_weekly": 0, "trips_weekly": 0,
+            }
 
         scores.append(score)
         statuses.append(status)
         coachings.append(coaching)
+        rem_hours.append(remaining.get("hours_needed", 0))
+        rem_trips.append(remaining.get("trips_needed", 0))
 
-    df["Score"]    = scores
-    df["Status"]   = statuses
-    df["Coaching"] = coachings
+    df["Score"]            = scores
+    df["Status"]           = statuses
+    df["Coaching"]         = coachings
+    df["Remaining Hours"]  = rem_hours
+    df["Remaining Trips"]  = rem_trips
 
     return df
+
 
 # ── ROUTE ─────────────────────────────────────────────────────────────────────
 params     = st.query_params
@@ -185,7 +182,8 @@ if view == "admin":
         f'{round(week_info["progress"] * 100, 1)}%</strong> complete'
         f' &nbsp;|&nbsp; <strong style="color:white;">'
         f'{week_info["days_left"]} day(s)</strong> left'
-        f' &nbsp;|&nbsp; Shift: <strong style="color:white;">5:00am – 7:30pm</strong>'
+        f' &nbsp;|&nbsp; Targets: <strong style="color:white;">'
+        f'{int(WEEKLY_HOURS_TARGET)}h / {WEEKLY_TRIPS_TARGET} trips</strong>'
     ), unsafe_allow_html=True)
 
     # ── Date range selector ───────────────────────────────
@@ -205,7 +203,7 @@ if view == "admin":
     # ── Fetch live data ───────────────────────────────────
     st.markdown("### 🔄 Live Data")
 
-    fetch_col, status_col = st.columns([2, 3])
+    fetch_col, _ = st.columns([2, 3])
     with fetch_col:
         fetch_btn = st.button(
             "🔄 Fetch Live Driver Data",
@@ -220,7 +218,7 @@ if view == "admin":
                     start_date=start_date.isoformat(),
                     end_date=end_date.isoformat(),
                 )
-                st.session_state["api_df"]     = raw_df
+                st.session_state["api_df"]      = raw_df
                 st.session_state["api_fetched"] = True
                 st.session_state["api_error"]   = None
             except UberAPIError as e:
@@ -230,7 +228,6 @@ if view == "admin":
                 st.session_state["api_error"]   = f"Unexpected error: {e}"
                 st.session_state["api_fetched"] = False
 
-    # Show persistent error if fetch failed
     if st.session_state.get("api_error") and not st.session_state.get("api_fetched"):
         st.error(f"❌ API Error: {st.session_state['api_error']}")
         with st.expander("🛠️ Troubleshooting"):
@@ -242,18 +239,18 @@ if view == "admin":
             """)
         st.stop()
 
-    # No data fetched yet
     if not st.session_state.get("api_fetched"):
         st.info("Select a date range and click **Fetch Live Driver Data** to load driver metrics.")
         st.stop()
 
-    # ── Data loaded — process and display ────────────────
+    # ── Data loaded ───────────────────────────────────────
     raw_df = st.session_state["api_df"]
     df     = process_api_dataframe(raw_df, week_info)
 
     st.success(f"✅ Loaded **{len(df)} drivers** from Uber API")
 
-    # ── Fleet overview metrics ────────────────────────────
+    # ── Fleet overview metrics ─────────────────────────────
+    # CHANGE 6 — display actual totals: Hours Online, Trips, Score, Status
     st.subheader("Fleet Overview")
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Total Drivers", len(df))
@@ -264,52 +261,56 @@ if view == "admin":
     avg_score   = round(df["Score"].astype(float).mean(),        1) if "Score"        in df.columns else "—"
 
     c2.metric("Avg Hours Online", f"{avg_hours}h")
-    c3.metric("Avg Trips",        avg_trips)
+    c3.metric("Trips",            avg_trips)           # CHANGE 6 — was "Avg Trips"
     c4.metric("Total Trips",      total_trips)
-    c5.metric("Avg Score",        avg_score)
+    c5.metric("Score",            avg_score)           # CHANGE 6 — was "Avg Score"
 
-    estimated_fuel_cost = total_trips * 5 * COST_PER_KM
+    estimated_fuel = total_trips * 5 * FUEL_COST_PER_KM
     st.caption(
         f"⛽ Estimated fleet fuel cost this period: "
-        f"R{estimated_fuel_cost:,.2f} "
-        f"(based on {total_trips} trips × 5 km × R{COST_PER_KM}/km)"
+        f"R{estimated_fuel:,.2f} "
+        f"(based on {total_trips} trips × 5 km × R{FUEL_COST_PER_KM}/km)"
+    )
+    st.caption(
+        f"📊 Weekly targets: {int(WEEKLY_HOURS_TARGET)}h online / {WEEKLY_TRIPS_TARGET} trips "
+        f"({DAILY_HOURS_TARGET:.1f}h/day / {int(DAILY_TRIPS_TARGET)} trips/day pace)"
     )
 
     st.divider()
 
-    # ── Hotspot Performance ───────────────────────────────
-    st.subheader("Hotspot Performance")
-    team_cols = st.columns(len(TEAMS))
+    # ── Team Performance ───────────────────────────────────
+    st.subheader("Team Performance")
+    team_cols = st.columns(max(len(TEAMS), 1))
     for i, (team_name, info) in enumerate(TEAMS.items()):
         t_df        = df[df["Team"] == team_name]
         t_n         = len(t_df)
         t_avg_score = round(t_df["Score"].astype(float).mean(), 1) if t_n and "Score" in t_df.columns else "—"
-        hotspot_key = info.get("hotspot", team_name)
-        hotspot_cfg = HOTSPOTS.get(hotspot_key, {})
-        doable_target = hotspot_cfg.get("doable_trips_target", "—")
+        t_avg_hrs   = round(t_df["Hours Online"].astype(float).mean(), 1) if t_n and "Hours Online" in t_df.columns else "—"
         team_cols[i].metric(
             team_name,
             f"{t_n} drivers",
-            f"Avg Score: {t_avg_score} | Target: {doable_target} trips"
+            f"Avg Score: {t_avg_score} | Hrs: {t_avg_hrs}h"
         )
         team_cols[i].caption(f"Leader: {info['leader']}")
 
     st.divider()
 
-    # ── Raw API response inspector (remove after confirming field names) ──
+    # ── Raw API inspector ─────────────────────────────────
     if st.session_state.get("uber_raw_response"):
-        with st.expander("🔍 Raw API Response (for debugging — remove later)"):
+        with st.expander("🔍 Raw API Response (debug)"):
             st.json(st.session_state["uber_raw_response"])
 
     # ── Preview table ─────────────────────────────────────
     with st.expander("📋 Preview Full Driver Table", expanded=True):
-        show_cols = ["Driver", "Team", "Hotspot", "Hours Online", "Hours on Trip",
-                     "Total Trips", "Score", "Status", "Coaching"]
+        # CHANGE 6 — show Hours Online, Trips (totals), Score, Status
+        show_cols = [
+            "Driver", "Team", "Hours Online", "Hours on Trip",
+            "Total Trips", "Score", "Status",
+            "Remaining Hours", "Remaining Trips", "Coaching",
+        ]
         show_cols = [c for c in show_cols if c in df.columns]
-        preview   = df[show_cols].copy()
         st.dataframe(
-            preview.sort_values("Score", ascending=False)
-                   .reset_index(drop=True),
+            df[show_cols].sort_values("Score", ascending=False).reset_index(drop=True),
             use_container_width=True,
             hide_index=True
         )
@@ -317,8 +318,11 @@ if view == "admin":
     st.divider()
 
     # ── Save & publish ────────────────────────────────────
-    encode_cols = ["Driver", "Team", "Hotspot", "Hours Online", "Hours on Trip",
-                   "Total Trips", "Score", "Status", "Coaching"]
+    encode_cols = [
+        "Driver", "Team", "Hours Online", "Hours on Trip",
+        "Total Trips", "Score", "Status",
+        "Remaining Hours", "Remaining Trips", "Coaching",
+    ]
     encode_cols = [c for c in encode_cols if c in df.columns]
 
     payload = {
@@ -400,6 +404,7 @@ UBER_ORG_UUID       = "8B4z_AZXs0G7Vto_3jq_bGHEfZ3iy78wmMjlJU_SnvhuBn71eN64PJdqg
 
 # ════════════════════════════════════════════════════════
 # DRIVERS VIEW
+# CHANGE 6 — display Hours Online, Trips, Remaining Hours, Remaining Trips
 # ════════════════════════════════════════════════════════
 elif view == "drivers":
     data = load_fleet_data()
@@ -413,9 +418,25 @@ elif view == "drivers":
     wi      = data.get("week_info", week_info)
     updated = data.get("updated_at", "")
 
-    st.markdown(
-        f"*{wi.get('day_name', '—')} check-in  |  "
-        f"{wi.get('days_left', '—')} day(s) left  |  Updated: {updated}*"
+    # Show published period if available, else fall back to week_info
+    start_str = data.get("start_date", "")
+    end_str   = data.get("end_date", "")
+    week_lbl  = data.get("week_label", "")
+
+    if start_str and end_str:
+        period_display = f"{start_str} → {end_str}"
+    else:
+        period_display = f"{wi.get('day_name', '—')} | {wi.get('days_left', '—')} day(s) left"
+
+    meta_parts = []
+    if week_lbl:
+        meta_parts.append(f"**{week_lbl}**")
+    meta_parts.append(f"Period: {period_display}")
+    meta_parts.append(f"Updated: {updated}")
+    st.markdown("*" + "  |  ".join(meta_parts) + "*")
+
+    st.caption(
+        f"📊 Weekly targets: {int(WEEKLY_HOURS_TARGET)}h online / {WEEKLY_TRIPS_TARGET} trips"
     )
     st.divider()
 
@@ -434,27 +455,29 @@ elif view == "drivers":
 
     row = matches.iloc[0]
 
+    team_str = row.get("Team", "—")
     st.markdown(f"""
     <div style="background:white;border-radius:16px;padding:28px 32px;
                 box-shadow:0 4px 20px rgba(0,0,0,.10);margin-bottom:18px;">
         <h2 style="margin:0 0 4px 0;color:#0f2027;">👤 {row['Driver']}</h2>
-        <p style="color:#555;margin:0 0 20px 0;font-size:15px;">
-            Hotspot: {row.get('Hotspot', '—')}
-        </p>
+        <p style="color:#555;margin:0 0 20px 0;font-size:15px;">Team: {team_str}</p>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("### Your Stats This Period")
+
+    # CHANGE 6 — Hours Online, Trips (totals), Remaining Hours, Remaining Trips
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("⏱️ Hours Online",  f"{row.get('Hours Online',  '—')}h")
-    k2.metric("🚗 Hours on Trip", f"{row.get('Hours on Trip', '—')}h")
-    k3.metric("📦 Total Trips",    str(row.get("Total Trips",  "—")))
-    k4.metric("⭐ Score",          str(row.get("Score",        "—")))
+    k1.metric("⏱️ Hours Online",    f"{row.get('Hours Online',  '—')}h")
+    k2.metric("📦 Trips",           str(row.get("Total Trips",  "—")))
+    k3.metric("⏳ Remaining Hours", f"{row.get('Remaining Hours', '—')}h")
+    k4.metric("🎯 Remaining Trips", str(row.get("Remaining Trips", "—")))
 
     st.divider()
 
     driver_status = row.get("Status", "—")
-    st.markdown(f"**Status: {driver_status}**")
+    driver_score  = row.get("Score", "—")
+    st.markdown(f"**Status:** {driver_status} &nbsp;|&nbsp; **Score:** {driver_score}")
 
     coaching_msg = row.get("Coaching", "")
     if coaching_msg:
@@ -466,6 +489,7 @@ elif view == "drivers":
 
 # ════════════════════════════════════════════════════════
 # FLEET / MANAGEMENT VIEW
+# CHANGE 6 — Hours Online, Trips, Score, Status (no daily averages)
 # ════════════════════════════════════════════════════════
 elif view == "fleet":
     st.markdown("# 📊 SparklingBlu — Fleet Performance")
@@ -473,7 +497,7 @@ elif view == "fleet":
     # ── Password gate ──────────────────────────────────────
     if not st.session_state.get("fleet_authenticated", False):
         st.info("🔒 This view is restricted to management.")
-        pwd = st.text_input("Enter management password:", type="password")
+        pwd    = st.text_input("Enter management password:", type="password")
         submit = st.button("Unlock", type="primary")
 
         if submit:
@@ -482,7 +506,6 @@ elif view == "fleet":
             except KeyError:
                 st.error("MANAGEMENT_PASSWORD not configured in Streamlit Secrets. Contact admin.")
                 st.stop()
-
             if pwd == correct_password:
                 st.session_state["fleet_authenticated"] = True
                 st.rerun()
@@ -491,12 +514,10 @@ elif view == "fleet":
         st.stop()
 
     data = load_fleet_data()
-
     if not data:
         st.warning("No data available. Ask the fleet manager to publish this week's stats.")
         st.stop()
 
-    # ── Self-service refresh ──────────────────────────────
     if st.button("🔄 Refresh Data", use_container_width=False):
         st.cache_data.clear()
         st.rerun()
@@ -505,31 +526,46 @@ elif view == "fleet":
     wi      = data.get("week_info", week_info)
     updated = data.get("updated_at", "")
 
-    st.markdown(
-        f"*Management Overview  |  {wi.get('day_name', '—')}  |  "
-        f"{wi.get('days_left', '—')} day(s) left  |  Updated: {updated}*"
+    start_str = data.get("start_date", "")
+    end_str   = data.get("end_date", "")
+    week_lbl  = data.get("week_label", "")
+
+    if start_str and end_str:
+        period_str = f"{start_str} → {end_str}"
+    else:
+        period_str = f"{wi.get('day_name', '—')} | {wi.get('days_left', '—')} day(s) left"
+
+    header_parts = []
+    if week_lbl:
+        header_parts.append(f"**{week_lbl}**")
+    header_parts.append(f"Period: {period_str}")
+    header_parts.append(f"Updated: {updated}")
+    st.markdown("*Management Overview  |  " + "  |  ".join(header_parts) + "*")
+
+    st.caption(
+        f"📊 Weekly targets: {int(WEEKLY_HOURS_TARGET)}h online / {WEEKLY_TRIPS_TARGET} trips"
     )
     st.divider()
 
-    # ── Fleet overview metrics ────────────────────────────
+    # ── Fleet overview metrics ─────────────────────────────
+    # CHANGE 6 — Hours Online, Trips, Score, Status
     total       = len(df)
     avg_hours   = round(df["Hours Online"].astype(float).mean(), 1) if "Hours Online" in df.columns else "—"
-    avg_trips   = round(df["Total Trips"].astype(float).mean(),  1) if "Total Trips"  in df.columns else "—"
     total_trips = int(df["Total Trips"].astype(float).sum())         if "Total Trips"  in df.columns else 0
+    avg_trips   = round(df["Total Trips"].astype(float).mean(),  1) if "Total Trips"  in df.columns else "—"
     avg_score   = round(df["Score"].astype(float).mean(),        1) if "Score"        in df.columns else "—"
 
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Total Drivers",    total)
-    c2.metric("Avg Hours Online", f"{avg_hours}h")
-    c3.metric("Avg Trips",        avg_trips)
-    c4.metric("Total Trips",      total_trips)
-    c5.metric("Avg Score",        avg_score)
+    c1.metric("Total Drivers",   total)
+    c2.metric("Hours Online",    f"{avg_hours}h")     # CHANGE 6 — avg across fleet
+    c3.metric("Trips",           avg_trips)           # CHANGE 6 — was "Avg Trips"
+    c4.metric("Total Trips",     total_trips)
+    c5.metric("Score",           avg_score)           # CHANGE 6 — was "Avg Score"
 
-    estimated_fuel_cost = total_trips * 5 * COST_PER_KM
+    estimated_fuel = total_trips * 5 * FUEL_COST_PER_KM
     st.caption(
-        f"⛽ Estimated fleet fuel cost this period: "
-        f"R{estimated_fuel_cost:,.2f} "
-        f"(based on {total_trips} trips × 5 km × R{COST_PER_KM}/km)"
+        f"⛽ Estimated fleet fuel cost: R{estimated_fuel:,.2f} "
+        f"({total_trips} trips × 5 km × R{FUEL_COST_PER_KM}/km)"
     )
 
     st.divider()
@@ -539,7 +575,7 @@ elif view == "fleet":
     i1, i2 = st.columns(2)
 
     with i1:
-        if "Hours Online" in df.columns:
+        if "Hours Online" in df.columns and "Driver" in df.columns:
             top_driver = df.loc[df["Hours Online"].astype(float).idxmax(), "Driver"]
             top_hours  = df["Hours Online"].astype(float).max()
             st.markdown(
@@ -551,21 +587,22 @@ elif view == "fleet":
                 insight_html(f"⏱️ <strong>{low_hrs} driver(s)</strong> with fewer than 10h online"),
                 unsafe_allow_html=True
             )
-        if "Score" in df.columns:
-            top_scorer       = df.loc[df["Score"].astype(float).idxmax(), "Driver"]
-            top_score_val    = df["Score"].astype(float).max()
-            top_performers_n = (df["Status"] == "Top Performer").sum()
+        if "Score" in df.columns and "Driver" in df.columns:
+            top_scorer    = df.loc[df["Score"].astype(float).idxmax(), "Driver"]
+            top_score_val = df["Score"].astype(float).max()
             st.markdown(
-                insight_html(f"⭐ <strong>Top Scorer:</strong> {top_scorer} — {top_score_val} pts"),
+                insight_html(f"⭐ <strong>Top Scorer:</strong> {top_scorer} — {top_score_val}"),
                 unsafe_allow_html=True
             )
+        if "Status" in df.columns:
+            top_performers_n = (df["Status"] == "Top Performer").sum()
             st.markdown(
                 insight_html(f"🥇 <strong>{top_performers_n} driver(s)</strong> with Top Performer status"),
                 unsafe_allow_html=True
             )
 
     with i2:
-        if "Total Trips" in df.columns:
+        if "Total Trips" in df.columns and "Driver" in df.columns:
             top_trips_driver = df.loc[df["Total Trips"].astype(float).idxmax(), "Driver"]
             top_trips_val    = int(df["Total Trips"].astype(float).max())
             st.markdown(
@@ -577,54 +614,68 @@ elif view == "fleet":
                 insight_html(f"🚗 <strong>{low_trps} driver(s)</strong> with fewer than 5 trips"),
                 unsafe_allow_html=True
             )
+        if "Score" in df.columns:
+            kpi_compliant = (
+                (df["Hours Online"].astype(float) >= WEEKLY_HOURS_TARGET) &
+                (df["Total Trips"].astype(float)  >= WEEKLY_TRIPS_TARGET)
+            ).sum() if all(c in df.columns for c in ["Hours Online", "Total Trips"]) else "—"
+            st.markdown(
+                insight_html(
+                    f"✅ <strong>{kpi_compliant} driver(s)</strong> KPI compliant "
+                    f"(≥{int(WEEKLY_HOURS_TARGET)}h & ≥{WEEKLY_TRIPS_TARGET} trips)"
+                ),
+                unsafe_allow_html=True
+            )
 
     st.divider()
 
-    # ── Hotspot Breakdown ─────────────────────────────────
-    st.markdown("### Hotspot Breakdown")
-    t_cols = st.columns(len(TEAMS))
+    # ── Team Breakdown ─────────────────────────────────────
+    st.markdown("### Team Breakdown")
+    t_cols = st.columns(max(len(TEAMS), 1))
     for i, (tn, info) in enumerate(TEAMS.items()):
         t_df        = df[df["Team"] == tn]
         t_n         = len(t_df)
         t_avg_hrs   = round(t_df["Hours Online"].astype(float).mean(), 1) if t_n and "Hours Online" in t_df.columns else "—"
         t_avg_score = round(t_df["Score"].astype(float).mean(),        1) if t_n and "Score"        in t_df.columns else "—"
-        hotspot_key = info.get("hotspot", tn)
-        hotspot_cfg = HOTSPOTS.get(hotspot_key, {})
-        doable_target = hotspot_cfg.get("doable_trips_target", "—")
         t_cols[i].metric(
             tn,
             f"{t_n} drivers",
-            f"Score: {t_avg_score} | Hrs: {t_avg_hrs}h | Target: {doable_target}"
+            f"Score: {t_avg_score} | Hrs: {t_avg_hrs}h"
         )
 
     st.divider()
 
-    # ── Driver search table ───────────────────────────────
+    # ── Driver search table ────────────────────────────────
     st.markdown("### Driver Search")
-    search  = st.text_input("Search by name or hotspot:", placeholder="e.g. John or Sandton")
+    search  = st.text_input("Search by name or team:", placeholder="e.g. John or Team A")
     display = df.copy()
     if search:
         mask = display["Driver"].str.lower().str.contains(search.lower(), na=False)
-        if "Hotspot" in display.columns:
-            mask = mask | display["Hotspot"].str.lower().str.contains(search.lower(), na=False)
+        if "Team" in display.columns:
+            mask = mask | display["Team"].str.lower().str.contains(search.lower(), na=False)
         display = display[mask]
 
-    show_cols = ["Driver", "Hotspot", "Hours Online", "Hours on Trip",
-                 "Total Trips", "Score", "Status"]
+    # CHANGE 6 — Hours Online, Trips, Score, Status (no daily averages)
+    show_cols = [
+        "Driver", "Team", "Hours Online", "Hours on Trip",
+        "Total Trips", "Score", "Status",
+        "Remaining Hours", "Remaining Trips",
+    ]
     show_cols = [c for c in show_cols if c in display.columns]
     st.dataframe(
         display[show_cols].sort_values("Score", ascending=False).reset_index(drop=True),
         use_container_width=True,
         hide_index=True
     )
+    st.caption(f"SparklingBlu Fleet  |  Updated: {updated}")
 
 
 # ════════════════════════════════════════════════════════
 # TEAM VIEW
+# CHANGE 6 — Hours Online, Trips, Score, Status
 # ════════════════════════════════════════════════════════
 elif view == "team":
     data = load_fleet_data()
-
     if not data:
         st.warning("No data available. Ask the fleet manager to publish this week's stats.")
         st.stop()
@@ -633,20 +684,38 @@ elif view == "team":
     wi      = data.get("week_info", week_info)
     updated = data.get("updated_at", "")
 
+    available_teams = df["Team"].unique().tolist() if "Team" in df.columns else list(TEAMS.keys())
+
     selected_team = (
-        team_param if team_param and team_param in TEAMS
-        else st.selectbox("Select your team:", list(TEAMS.keys()))
+        team_param if team_param and team_param in available_teams
+        else st.selectbox("Select your team:", available_teams)
     )
 
-    leader      = TEAMS[selected_team]["leader"]
-    hotspot_key = TEAMS[selected_team].get("hotspot", selected_team)
-    hotspot_cfg = HOTSPOTS.get(hotspot_key, {})
-    team_df     = df[df["Team"] == selected_team].copy()
+    if not selected_team:
+        st.warning("No teams found in the current data.")
+        st.stop()
+
+    leader  = TEAMS.get(selected_team, {}).get("leader", "—")
+    team_df = df[df["Team"] == selected_team].copy()
+
+    start_str = data.get("start_date", "")
+    end_str   = data.get("end_date", "")
+    week_lbl  = data.get("week_label", "")
+
+    if start_str and end_str:
+        period_str = f"{start_str} → {end_str}"
+    else:
+        period_str = f"{wi.get('day_name', '—')} | {wi.get('days_left', '—')} day(s) left"
 
     st.markdown(f"# 👥 {selected_team} — Weekly Performance")
-    st.markdown(
-        f"*Leader: {leader}  |  {wi.get('day_name', '—')}  |  "
-        f"{wi.get('days_left', '—')} day(s) left  |  Updated: {updated}*"
+
+    meta_parts = [f"Leader: {leader}", f"Period: {period_str}", f"Updated: {updated}"]
+    if week_lbl:
+        meta_parts.insert(0, f"**{week_lbl}**")
+    st.markdown("*" + "  |  ".join(meta_parts) + "*")
+
+    st.caption(
+        f"📊 Weekly targets: {int(WEEKLY_HOURS_TARGET)}h online / {WEEKLY_TRIPS_TARGET} trips"
     )
     st.divider()
 
@@ -658,32 +727,27 @@ elif view == "team":
     t_avg_hrs   = round(team_df["Hours Online"].astype(float).mean(), 1) if "Hours Online" in team_df.columns else "—"
     t_avg_trp   = round(team_df["Total Trips"].astype(float).mean(),  1) if "Total Trips"  in team_df.columns else "—"
     t_avg_score = round(team_df["Score"].astype(float).mean(),        1) if "Score"        in team_df.columns else "—"
-    t_best      = (team_df.loc[team_df["Hours Online"].astype(float).idxmax(), "Driver"]
-                   if "Hours Online" in team_df.columns else "—")
+    t_best      = (
+        team_df.loc[team_df["Hours Online"].astype(float).idxmax(), "Driver"]
+        if "Hours Online" in team_df.columns else "—"
+    )
 
+    # CHANGE 6 — Hours Online, Trips, Score, Status
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Team Size",        t_total)
-    m2.metric("Avg Hours Online", f"{t_avg_hrs}h")
-    m3.metric("Avg Trips",        t_avg_trp)
-    m4.metric("Most Hours",       t_best)
-    m5.metric("Avg Score",        t_avg_score)
+    m2.metric("Hours Online",     f"{t_avg_hrs}h")    # CHANGE 6
+    m3.metric("Trips",            t_avg_trp)          # CHANGE 6
+    m4.metric("Top Hours",        t_best)
+    m5.metric("Score",            t_avg_score)        # CHANGE 6
 
     st.divider()
 
-    # ── Hotspot strategy expander ─────────────────────────
-    if hotspot_cfg:
-        with st.expander(f"📍 Hotspot Strategy — {hotspot_key}", expanded=False):
-            hc1, hc2, hc3 = st.columns(3)
-            hc1.markdown(f"**Anchor:** {hotspot_cfg.get('anchor', '—')}")
-            hc1.markdown(f"**Primary Type:** {hotspot_cfg.get('primary_type', '—')}")
-            hc2.markdown(f"**Shift Hours:** {hotspot_cfg.get('shift_hours', '—')}")
-            hc2.markdown(f"**Trips Target:** {hotspot_cfg.get('doable_trips_target', '—')} trips")
-            hc3.markdown(f"**Daily Yield:** {hotspot_cfg.get('daily_yield', '—')}")
-            hc3.markdown(f"**Fuel Rule:** {hotspot_cfg.get('fuel_rule', '—')}")
-
-    # ── Team driver table ─────────────────────────────────
-    show_cols = ["Driver", "Hours Online", "Hours on Trip", "Total Trips",
-                 "Score", "Status", "Coaching"]
+    # CHANGE 6 — show Hours Online, Trips, Score, Status (no daily averages)
+    show_cols = [
+        "Driver", "Hours Online", "Hours on Trip",
+        "Total Trips", "Score", "Status",
+        "Remaining Hours", "Remaining Trips", "Coaching",
+    ]
     show_cols = [c for c in show_cols if c in team_df.columns]
     st.dataframe(
         team_df[show_cols].sort_values("Score", ascending=False).reset_index(drop=True),

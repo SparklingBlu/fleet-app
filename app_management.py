@@ -13,94 +13,128 @@ st.set_page_config(
 )
 
 # ─────────────────────────────────────────────
-# THEME / CSS
+# THEME / CSS — matched to app.py
 # ─────────────────────────────────────────────
-st.markdown(
-    """
-    <style>
-        /* Base */
-        html, body, [class*="css"] {
-            font-family: 'Segoe UI', Roboto, sans-serif;
-        }
+st.markdown("""
+<style>
+[data-testid="stAppViewContainer"],[data-testid="stMain"],.main{background:#f0f4f8!important;}
+[data-testid="stAppViewContainer"] p,[data-testid="stAppViewContainer"] span,
+[data-testid="stAppViewContainer"] div,[data-testid="stAppViewContainer"] label,
+[data-testid="stMarkdownContainer"] p,[data-testid="stMarkdownContainer"] span,
+[data-testid="stMarkdownContainer"] li{color:#0f2027!important;}
+h1,h2,h3{color:#0f2027!important;}
 
-        /* Metric cards */
-        div[data-testid="metric-container"] {
-            background-color: #ffffff;
-            border: 1px solid #e0e0e0;
-            border-radius: 12px;
-            padding: 16px 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        }
+/* Metric cards */
+[data-testid="stMetric"]{background:white!important;border-radius:14px!important;
+  padding:18px 22px!important;text-align:center!important;
+  box-shadow:0 2px 10px rgba(0,0,0,.10)!important;}
+[data-testid="stMetricLabel"]>div{font-size:12px!important;font-weight:800!important;
+  color:#203a43!important;text-transform:uppercase!important;letter-spacing:.6px!important;}
+[data-testid="stMetricValue"]>div{font-size:32px!important;font-weight:900!important;
+  color:#0f2027!important;}
 
-        /* Insight cards */
-        .insight-card {
-            background: #ffffff;
-            border: 1px solid #e0e0e0;
-            border-radius: 12px;
-            padding: 16px 20px;
-            margin-bottom: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        }
-        .insight-card h4 {
-            margin: 0 0 6px 0;
-            color: #1a1a2e;
-            font-size: 14px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .insight-card p {
-            margin: 0;
-            font-size: 22px;
-            font-weight: 700;
-            color: #0066cc;
-        }
-        .insight-card small {
-            color: #666;
-            font-size: 12px;
-        }
+[data-testid="stAlert"] p,[data-testid="stAlert"] span{color:#0f2027!important;}
+[data-testid="stTextInput"] input{background:white!important;color:#0f2027!important;
+  border:1.5px solid #2c5364!important;border-radius:8px!important;}
+[data-testid="stTextInput"] label,[data-testid="stNumberInput"] label,
+[data-testid="stSelectbox"] label,[data-testid="stFileUploader"] label{
+  color:#0f2027!important;font-weight:600!important;}
+[data-testid="stCaptionContainer"] p{color:#555!important;font-size:13px!important;}
+[data-testid="stExpander"] summary p{color:#0f2027!important;font-weight:600!important;}
 
-        /* Status badges */
-        .badge-green  { background:#d4edda; color:#155724; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; }
-        .badge-yellow { background:#fff3cd; color:#856404; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; }
-        .badge-orange { background:#ffe5b4; color:#7d4e00; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; }
-        .badge-red    { background:#f8d7da; color:#721c24; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; }
+/* Dataframe — white card with shadow, matches admin Preview Full Driver Table */
+[data-testid="stDataFrame"]{
+    background:white!important;
+    border-radius:14px!important;
+    padding:6px!important;
+    box-shadow:0 2px 10px rgba(0,0,0,.10)!important;
+    border:1px solid #e3e9ee!important;
+}
+[data-testid="stDataFrame"] [role="columnheader"]{
+    background:#f7f9fb!important;
+    color:#203a43!important;
+    font-weight:800!important;
+    text-transform:uppercase!important;
+    font-size:11.5px!important;
+    letter-spacing:.4px!important;
+}
+[data-testid="stDataFrame"] [role="gridcell"]{
+    color:#0f2027!important;
+    font-size:13.5px!important;
+}
 
-        /* Section headers */
-        .section-header {
-            font-size: 18px;
-            font-weight: 700;
-            color: #1a1a2e;
-            margin: 24px 0 12px 0;
-            border-left: 4px solid #0066cc;
-            padding-left: 10px;
-        }
+/* Insight cards */
+.insight-card {
+    background: #ffffff;
+    border-radius: 14px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.10);
+}
+.insight-card h4 {
+    margin: 0 0 6px 0;
+    color: #203a43;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+}
+.insight-card p {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 900;
+    color: #0f2027;
+}
+.insight-card small {
+    color: #555;
+    font-size: 12px;
+}
 
-        /* Chat box */
-        .sparky-answer {
-            background: #f0f7ff;
-            border: 1px solid #b3d4f5;
-            border-radius: 10px;
-            padding: 14px 18px;
-            color: #0a3d62;
-            font-size: 15px;
-            margin-top: 10px;
-        }
+/* Status badges */
+.badge-green  { background:#d4edda; color:#155724; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; }
+.badge-yellow { background:#fff3cd; color:#856404; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; }
+.badge-orange { background:#ffe5b4; color:#7d4e00; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; }
+.badge-red    { background:#f8d7da; color:#721c24; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; }
 
-        /* Download button */
-        div[data-testid="stDownloadButton"] button {
-            background-color: #0066cc;
-            color: white;
-            border-radius: 8px;
-            border: none;
-        }
-        div[data-testid="stDownloadButton"] button:hover {
-            background-color: #0052a3;
-        }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+/* Section headers */
+.section-header {
+    font-size: 18px;
+    font-weight: 800;
+    color: #0f2027;
+    margin: 24px 0 12px 0;
+    border-left: 5px solid #2c5364;
+    padding-left: 12px;
+}
+
+/* Chat box */
+.sparky-answer {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.10);
+    padding: 14px 18px;
+    color: #0f2027;
+    font-size: 15px;
+    margin-top: 10px;
+}
+
+/* Download button */
+div[data-testid="stDownloadButton"] button {
+    background: linear-gradient(90deg,#0f2027,#203a43,#2c5364);
+    color: white;
+    border-radius: 8px;
+    border: none;
+}
+div[data-testid="stDownloadButton"] button:hover {
+    opacity: 0.92;
+}
+
+/* Primary buttons (Refresh, Unlock) — match admin gradient */
+div[data-testid="stButton"] button[kind="primary"]{
+    background: linear-gradient(90deg,#0f2027,#203a43,#2c5364)!important;
+    border:none!important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────
 # CONSTANTS
@@ -124,8 +158,11 @@ SBV_DRIVERS = [
     "Junior Ishumeal", "Alli Mabvuto",
 ]
 
-EXPECTED_HOURS_PER_DAY = 10
-EXPECTED_TRIPS_PER_DAY = 10
+# ── CHANGE: Updated to match engine.py universal targets (50h / 35 trips) ──
+WEEKLY_HOURS_TARGET  = 50.0
+WEEKLY_TRIPS_TARGET  = 35
+EXPECTED_HOURS_PER_DAY = WEEKLY_HOURS_TARGET / 7   # ≈ 7.14h
+EXPECTED_TRIPS_PER_DAY = WEEKLY_TRIPS_TARGET / 7   # = 5.0
 
 # ─────────────────────────────────────────────
 # HELPER FUNCTIONS
@@ -156,16 +193,16 @@ def match_sbv_driver(name: str) -> bool:
 
 def get_day_aware_coaching(row) -> tuple:
     """
-    Returns (status_str, coaching_message) based on current weekday progress.
+    Returns (status_str, coaching_message) based on published period progress.
 
-    Monday=0 … Sunday=6.
-    days_elapsed = weekday + 1  (Monday → 1, Tuesday → 2, …)
-    Expected hours = days_elapsed * 10
-    Expected trips = days_elapsed * 10
+    days_elapsed comes from the published reporting period
+    (end_date - start_date + 1), capped at 7, instead of today's weekday.
+    Falls back to weekday-based calculation if dates are not available.
+
+    Expected hours = days_elapsed * (50 / 7)
+    Expected trips = days_elapsed * (35 / 7)
     """
-    today = datetime.now()
-    weekday = today.weekday()  # Monday=0
-    days_elapsed = weekday + 1  # 1–7
+    days_elapsed = globals().get("_pub_days_elapsed", datetime.now().weekday() + 1)
 
     expected_hours = days_elapsed * EXPECTED_HOURS_PER_DAY
     expected_trips = days_elapsed * EXPECTED_TRIPS_PER_DAY
@@ -183,30 +220,53 @@ def get_day_aware_coaching(row) -> tuple:
     hours_gap = expected_hours - actual_hours
     trips_gap = expected_trips - actual_trips
 
-    # Status based on hours gap
-    if hours_gap <= 0:
+    # Status based on the worse of the two gaps (hours and trips both matter)
+    max_gap_pct = max(
+        hours_gap / expected_hours if expected_hours > 0 else 0,
+        trips_gap / expected_trips if expected_trips > 0 else 0,
+    )
+
+    # Build a combined facts line used in every branch
+    hours_line = f"{actual_hours:.1f}h / {expected_hours:.1f}h target"
+    trips_line = f"{actual_trips} trips / {expected_trips:.0f} target"
+
+    if max_gap_pct <= 0:
         status = "On Track"
         msg = (
-            f"✅ On track! {actual_hours:.1f}h / {expected_hours}h target. "
-            f"{actual_trips} trips vs {expected_trips} expected."
+            f"✅ On track! {hours_line}. {trips_line}."
         )
-    elif hours_gap <= 5:
+    elif max_gap_pct <= 0.15:
         status = "Slightly Behind"
+        behind_parts = []
+        if hours_gap > 0:
+            behind_parts.append(f"{hours_gap:.1f}h")
+        if trips_gap > 0:
+            behind_parts.append(f"{int(trips_gap)} trips")
         msg = (
-            f"🟡 Slightly behind. {actual_hours:.1f}h vs {expected_hours}h target. "
-            f"Close the {hours_gap:.1f}h gap today."
+            f"🟡 Slightly behind. {hours_line}. {trips_line}. "
+            f"Close the gap: {' and '.join(behind_parts)}."
         )
-    elif hours_gap <= 15:
+    elif max_gap_pct <= 0.40:
         status = "Behind"
+        behind_parts = []
+        if hours_gap > 0:
+            behind_parts.append(f"{hours_gap:.1f}h")
+        if trips_gap > 0:
+            behind_parts.append(f"{int(trips_gap)} trips")
         msg = (
-            f"🟠 Behind target by {hours_gap:.1f}h. {actual_hours:.1f}h vs {expected_hours}h. "
-            f"Push for more hours to catch up."
+            f"🟠 Behind on {' and '.join(behind_parts)}. {hours_line}. {trips_line}. "
+            f"Push harder to catch up."
         )
     else:
         status = "Significantly Behind"
+        behind_parts = []
+        if hours_gap > 0:
+            behind_parts.append(f"{hours_gap:.1f}h")
+        if trips_gap > 0:
+            behind_parts.append(f"{int(trips_gap)} trips")
         msg = (
-            f"🔴 Significantly behind — {hours_gap:.1f}h gap. {actual_hours:.1f}h vs {expected_hours}h. "
-            f"Immediate action needed."
+            f"🔴 Significantly behind on {' and '.join(behind_parts)}. "
+            f"{hours_line}. {trips_line}. Immediate action needed."
         )
 
     return status, msg
@@ -219,17 +279,15 @@ def get_sparky_response(question: str, df: pd.DataFrame) -> str:
     if not isinstance(df, pd.DataFrame) or df.empty:
         return "No fleet data available right now. Try refreshing."
 
-    today = datetime.now()
-    weekday = today.weekday()
-    days_elapsed = weekday + 1
+    days_elapsed   = globals().get("_pub_days_elapsed", datetime.now().weekday() + 1)
     expected_hours = days_elapsed * EXPECTED_HOURS_PER_DAY
 
     # Ensure numeric columns
-    hours_col = "Hours Online"
-    trips_col = "Total Trips"
-    score_col = "Score"
+    hours_col  = "Hours Online"
+    trips_col  = "Total Trips"
+    score_col  = "Score"
     driver_col = "Driver"
-    team_col = "Team"
+    team_col   = "Team"
 
     for col in [hours_col, trips_col, score_col]:
         if col in df.columns:
@@ -249,9 +307,10 @@ def get_sparky_response(question: str, df: pd.DataFrame) -> str:
     elif "behind target" in q or "behind" in q:
         if hours_col in df.columns:
             behind = df[df[hours_col] < expected_hours]
+            period_label = globals().get("_pub_period_label", datetime.now().strftime("%A"))
             return (
                 f"⚠️ {len(behind)} of {len(df)} drivers are below the expected "
-                f"{expected_hours}h target for today ({today.strftime('%A')})."
+                f"{expected_hours:.1f}h target for the period ({period_label})."
             )
         return "Hours data not available."
 
@@ -259,8 +318,8 @@ def get_sparky_response(question: str, df: pd.DataFrame) -> str:
         if team_col in df.columns and trips_col in df.columns:
             hotspot = df.groupby(team_col)[trips_col].sum().idxmax()
             total = int(df.groupby(team_col)[trips_col].sum().max())
-            return f"🗺️ Hotspot with most trips: **{hotspot}** — {total} total trips."
-        return "Hotspot/trip data not available."
+            return f"🗺️ Team with most trips: **{hotspot}** — {total} total trips."
+        return "Trip data not available."
 
     elif "average score" in q or "avg score" in q:
         if score_col in df.columns:
@@ -347,7 +406,7 @@ def main():
     with col_refresh:
         st.write("")
         st.write("")
-        if st.button("🔄 Refresh Data", use_container_width=True):
+        if st.button("🔄 Refresh Data", use_container_width=True, type="primary"):
             st.cache_data.clear()
             st.rerun()
 
@@ -375,33 +434,78 @@ def main():
 
     df = pd.DataFrame(fleet_list)
 
+    # ── Parse published dates and set module-level days_elapsed ──
+    start_date_str = raw_data.get("start_date", "") if isinstance(raw_data, dict) else ""
+    end_date_str   = raw_data.get("end_date",   "") if isinstance(raw_data, dict) else ""
+    week_label     = raw_data.get("week_label", "") if isinstance(raw_data, dict) else ""
+    updated_at     = raw_data.get("updated_at", "") if isinstance(raw_data, dict) else ""
+
+    pub_start = None
+    pub_end   = None
+    for fmt in ("%Y-%m-%d", "%d %b %Y", "%d/%m/%Y"):
+        try:
+            pub_start = datetime.strptime(start_date_str.strip(), fmt)
+            break
+        except (ValueError, AttributeError):
+            continue
+    for fmt in ("%Y-%m-%d", "%d %b %Y", "%d/%m/%Y"):
+        try:
+            pub_end = datetime.strptime(end_date_str.strip(), fmt)
+            break
+        except (ValueError, AttributeError):
+            continue
+
+    if pub_start and pub_end:
+        days_elapsed = max(1, min((pub_end - pub_start).days + 1, 7))
+        period_label = f"{pub_start.strftime('%d %b')} – {pub_end.strftime('%d %b %Y')}"
+    else:
+        days_elapsed = datetime.now().weekday() + 1
+        period_label = datetime.now().strftime("%A")
+
+    # Inject into module scope so get_day_aware_coaching() and get_sparky_response() pick it up
+    globals()["_pub_days_elapsed"]   = days_elapsed
+    globals()["_pub_period_label"]   = period_label
+
     # Normalise key numeric columns
     for col in ["Hours Online", "Hours on Trip", "Total Trips", "Score"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
-    driver_col = "Driver"
-    team_col = "Team"
-    hours_col = "Hours Online"
+    driver_col     = "Driver"
+    team_col       = "Team"
+    hours_col      = "Hours Online"
     trip_hours_col = "Hours on Trip"
-    trips_col = "Total Trips"
-    score_col = "Score"
+    trips_col      = "Total Trips"
+    score_col      = "Score"
+
+    # ── Period target uses published dates + new targets ──
+    expected_hours_today = days_elapsed * EXPECTED_HOURS_PER_DAY
+    expected_trips_today = days_elapsed * EXPECTED_TRIPS_PER_DAY
 
     # ── Section 1: Fleet Overview ────────────
     st.markdown('<div class="section-header">Fleet Overview</div>', unsafe_allow_html=True)
 
+    # Show reporting period under the section header
+    period_parts = []
+    if week_label:
+        period_parts.append(f"**{week_label}**")
+    period_parts.append(f"Period: {period_label}")
+    if updated_at:
+        period_parts.append(f"Published: {updated_at}")
+    st.caption("  |  ".join(period_parts))
+
     total_drivers = len(df)
-    avg_hours = df[hours_col].mean() if hours_col in df.columns else 0
-    avg_trips = df[trips_col].mean() if trips_col in df.columns else 0
-    total_trips = int(df[trips_col].sum()) if trips_col in df.columns else 0
-    avg_score = df[score_col].mean() if score_col in df.columns else 0
+    avg_hours  = df[hours_col].mean()         if hours_col  in df.columns else 0
+    avg_trips  = df[trips_col].mean()         if trips_col  in df.columns else 0
+    total_trips = int(df[trips_col].sum())    if trips_col  in df.columns else 0
+    avg_score  = df[score_col].mean()         if score_col  in df.columns else 0
 
     m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("👥 Total Drivers", total_drivers)
+    m1.metric("👥 Total Drivers",    total_drivers)
     m2.metric("⏱️ Avg Hours Online", f"{avg_hours:.1f}h")
-    m3.metric("🚗 Avg Trips", f"{avg_trips:.1f}")
-    m4.metric("🔢 Total Trips", f"{total_trips:,}")
-    m5.metric("⭐ Avg Score", f"{avg_score:.2f}")
+    m3.metric("🚗 Avg Trips",        f"{avg_trips:.1f}")
+    m4.metric("🔢 Total Trips",       f"{total_trips:,}")
+    m5.metric("⭐ Avg Score",         f"{avg_score:.2f}")
 
     # Fuel cost estimate
     fuel_km_per_trip = 5
@@ -422,7 +526,7 @@ def main():
     with ins_left:
         if hours_col in df.columns and driver_col in df.columns:
             top_by_hours_name = df.loc[df[hours_col].idxmax(), driver_col]
-            top_by_hours_val = df[hours_col].max()
+            top_by_hours_val  = df[hours_col].max()
             st.markdown(
                 f'<div class="insight-card"><h4>🏆 Top Driver by Hours</h4>'
                 f'<p>{top_by_hours_name}</p>'
@@ -432,7 +536,7 @@ def main():
 
         if score_col in df.columns and driver_col in df.columns:
             top_scorer_name = df.loc[df[score_col].idxmax(), driver_col]
-            top_scorer_val = df[score_col].max()
+            top_scorer_val  = df[score_col].max()
             st.markdown(
                 f'<div class="insight-card"><h4>⭐ Top Scorer</h4>'
                 f'<p>{top_scorer_name}</p>'
@@ -441,18 +545,22 @@ def main():
             )
 
         if hours_col in df.columns and score_col in df.columns:
-            top_performers = df[(df[hours_col] >= 40) & (df[score_col] >= 4.5)]
+            # ── Top Performers threshold aligns with weekly targets ──
+            top_performers = df[
+                (df[hours_col] >= WEEKLY_HOURS_TARGET * 0.8) &
+                (df[score_col] >= 70)
+            ]
             st.markdown(
                 f'<div class="insight-card"><h4>🌟 Top Performers</h4>'
                 f'<p>{len(top_performers)}</p>'
-                f'<small>Drivers with ≥40h & score ≥4.5</small></div>',
+                f'<small>Drivers with ≥{WEEKLY_HOURS_TARGET * 0.8:.0f}h & score ≥70</small></div>',
                 unsafe_allow_html=True,
             )
 
     with ins_right:
         if trips_col in df.columns and driver_col in df.columns:
             top_by_trips_name = df.loc[df[trips_col].idxmax(), driver_col]
-            top_by_trips_val = int(df[trips_col].max())
+            top_by_trips_val  = int(df[trips_col].max())
             st.markdown(
                 f'<div class="insight-card"><h4>🚗 Top Driver by Trips</h4>'
                 f'<p>{top_by_trips_name}</p>'
@@ -485,10 +593,10 @@ def main():
 
     if team_col in df.columns:
         hotspot_groups = df.groupby(team_col)
-        hotspot_stats = hotspot_groups.agg(
+        hotspot_stats  = hotspot_groups.agg(
             driver_count=(driver_col, "count") if driver_col in df.columns else (team_col, "count"),
-            avg_hours=(hours_col, "mean") if hours_col in df.columns else (team_col, "count"),
-            avg_score=(score_col, "mean") if score_col in df.columns else (team_col, "count"),
+            avg_hours=(hours_col, "mean")      if hours_col  in df.columns else (team_col, "count"),
+            avg_score=(score_col, "mean")      if score_col  in df.columns else (team_col, "count"),
         ).reset_index()
 
         # Top driver per hotspot
@@ -500,7 +608,7 @@ def main():
         else:
             top_per_hotspot = pd.DataFrame()
 
-        n_hotspots = len(hotspot_stats)
+        n_hotspots   = len(hotspot_stats)
         cols_per_row = 3
         for i in range(0, n_hotspots, cols_per_row):
             row_cols = st.columns(cols_per_row)
@@ -508,9 +616,9 @@ def main():
                 idx = i + j
                 if idx >= n_hotspots:
                     break
-                row = hotspot_stats.iloc[idx]
+                row          = hotspot_stats.iloc[idx]
                 hotspot_name = row[team_col]
-                top_driver = (
+                top_driver   = (
                     top_per_hotspot.loc[hotspot_name, driver_col]
                     if hotspot_name in top_per_hotspot.index
                     else "N/A"
@@ -532,11 +640,10 @@ def main():
 
     with st.expander("🚛 SBV Fleet Tracking", expanded=False):
         if driver_col in df.columns:
-            sbv_mask = df[driver_col].apply(match_sbv_driver)
-            sbv_df = df[sbv_mask].copy()
-
+            sbv_mask     = df[driver_col].apply(match_sbv_driver)
+            sbv_df       = df[sbv_mask].copy()
             active_count = len(sbv_df)
-            total_sbv = len(SBV_DRIVERS)
+            total_sbv    = len(SBV_DRIVERS)
 
             st.metric(
                 "SBV Drivers Active",
@@ -546,11 +653,9 @@ def main():
             )
 
             if not sbv_df.empty:
-                # Build display table
                 display_cols = [c for c in [driver_col, team_col, hours_col, trips_col, score_col] if c in sbv_df.columns]
-                sbv_display = sbv_df[display_cols].copy()
+                sbv_display  = sbv_df[display_cols].copy()
 
-                # Add coaching status
                 status_list = []
                 for _, r in sbv_df.iterrows():
                     status, _ = get_day_aware_coaching(r)
@@ -563,11 +668,11 @@ def main():
 
             # List missing SBV drivers
             matched_names = sbv_df[driver_col].tolist() if not sbv_df.empty else []
-            missing_sbv = []
+            missing_sbv   = []
             for sbv_name in SBV_DRIVERS:
                 sbv_lower = sbv_name.lower()
                 sbv_parts = sbv_lower.split()
-                in_data = False
+                in_data   = False
                 for m in matched_names:
                     m_lower = m.lower()
                     if len(sbv_parts) >= 2:
@@ -592,16 +697,10 @@ def main():
     # ── Section 5: Driver Table + Coaching ───
     st.markdown('<div class="section-header">Driver Performance Table</div>', unsafe_allow_html=True)
 
-    today = datetime.now()
-    weekday = today.weekday()
-    days_elapsed = weekday + 1
-    expected_hours_today = days_elapsed * EXPECTED_HOURS_PER_DAY
-    expected_trips_today = days_elapsed * EXPECTED_TRIPS_PER_DAY
-
     df_table = df.copy()
 
-    # Day-aware columns
-    df_table["Day Target"] = expected_hours_today
+    # ── Day Target and Gap use published period targets ──
+    df_table["Day Target"] = round(expected_hours_today, 1)
     if hours_col in df_table.columns:
         df_table["Gap"] = (df_table["Day Target"] - df_table[hours_col]).round(2)
     else:
@@ -614,7 +713,7 @@ def main():
         coaching_statuses.append(status)
         coaching_messages.append(msg)
 
-    df_table["Status"] = coaching_statuses
+    df_table["Status"]   = coaching_statuses
     df_table["Coaching"] = coaching_messages
 
     # Search / filter
@@ -635,27 +734,29 @@ def main():
                 mask |= df_table[col].astype(str).str.contains(search_query, case=False, na=False)
         df_table = df_table[mask]
 
-    # Column order
+    # Column order — keep original row order (no Score sort), matches admin column layout
     preferred_cols = [
         driver_col, team_col, hours_col, trip_hours_col, trips_col,
-        score_col, "Day Target", "Gap", "Status", "Coaching",
+        score_col, "Status", "Day Target", "Gap", "Coaching",
     ]
     display_cols = [c for c in preferred_cols if c in df_table.columns]
-    remaining = [c for c in df_table.columns if c not in display_cols]
-    df_table = df_table[display_cols + remaining]
+    remaining    = [c for c in df_table.columns if c not in display_cols]
+    df_table     = df_table[display_cols + remaining]
 
+    # ── Caption references published period, not today's date ──
     st.caption(
-        f"📅 Today is **{today.strftime('%A')}** — day {days_elapsed} of the week. "
-        f"Expected target: **{expected_hours_today}h** / **{expected_trips_today} trips**."
+        f"📅 Reporting period: **{period_label}** ({days_elapsed} day{'s' if days_elapsed != 1 else ''}).  "
+        f"Period target: **{expected_hours_today:.1f}h** / **{expected_trips_today:.0f} trips**."
     )
     st.dataframe(df_table, use_container_width=True, hide_index=True)
 
     # Download CSV
+    fn_date  = pub_end.strftime("%Y%m%d") if pub_end else datetime.now().strftime("%Y%m%d")
     csv_data = df_table.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="⬇️ Download Fleet Data (CSV)",
         data=csv_data,
-        file_name=f"sparklingblu_fleet_{today.strftime('%Y%m%d_%H%M')}.csv",
+        file_name=f"sparklingblu_fleet_{fn_date}.csv",
         mime="text/csv",
         use_container_width=False,
     )
@@ -677,7 +778,7 @@ def main():
         ]
 
         st.markdown("**Quick questions:**")
-        chip_cols = st.columns(len(example_questions))
+        chip_cols        = st.columns(len(example_questions))
         selected_example = None
         for i, q in enumerate(example_questions):
             with chip_cols[i]:
@@ -701,9 +802,13 @@ def main():
     st.divider()
 
     # ── Footer ────────────────────────────────
-    st.caption(
-        "SparklingBlu Fleet Management | Data refreshes when admin publishes new stats"
-    )
+    footer_parts = ["SparklingBlu Fleet Management"]
+    if week_label:
+        footer_parts.append(week_label)
+    if updated_at:
+        footer_parts.append(f"Published: {updated_at}")
+    footer_parts.append("Data refreshes when admin publishes new stats")
+    st.caption(" | ".join(footer_parts))
 
 
 if __name__ == "__main__":

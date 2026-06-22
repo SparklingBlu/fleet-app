@@ -1,32 +1,33 @@
 # engine.py
 # Scoring and coaching — SparklingBlu Fleet Performance System
-# Phase 2: Hotspot-aligned targets with fuel efficiency metrics
-# Targets: 40-50h/week | 50-75 trips/week (hotspot-dependent) | R28.06/L fuel
+# Targets: 50 Hours Online / 35 Trips per week (universal, no hotspot dependency)
 
 from datetime import datetime
-from hotspots import (
-    HOTSPOT_WEEKLY_TARGETS, COST_PER_KM, FUEL_PRICE_PER_LITRE,
-    PEAK_BLOCKS, get_current_peak_block
-)
 
-# Default weekly targets (used when hotspot not assigned)
-DEFAULT_WEEKLY_TARGETS = {
-    "weekly_hours_min": 50.0,
-    "weekly_hours_max": 50.0,
-    "weekly_trips_min": 50,
-    "weekly_trips_max": 50,
-    "daily_hours":       10.0,
-    "daily_trips":       10,
-}
+# ─────────────────────────────────────────────────────────────────────────────
+# UNIVERSAL WEEKLY TARGETS
+# ─────────────────────────────────────────────────────────────────────────────
+WEEKLY_HOURS_TARGET = 50.0
+WEEKLY_TRIPS_TARGET = 35
 
-SHIFT_START = 5       # 5:00 AM
-SHIFT_END   = 19.5    # 7:30 PM
-SHIFT_HOURS = SHIFT_END - SHIFT_START  # 14.5h per day
+DAILY_HOURS_TARGET = WEEKLY_HOURS_TARGET / 7   # ≈ 7.14h
+DAILY_TRIPS_TARGET = WEEKLY_TRIPS_TARGET / 7   # = 5.0
+
+SHIFT_START = 5       # 05:00
+SHIFT_END   = 19.5    # 19:30
+SHIFT_HOURS = SHIFT_END - SHIFT_START  # 14.5h
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# get_week_progress
+# ─────────────────────────────────────────────────────────────────────────────
 def get_week_progress():
+    """
+    Returns a dict describing where we are in the current week.
+    Used by the admin view header banner and coaching messages.
+    """
     now        = datetime.now()
-    day_number = now.weekday()      # Mon=0, Sun=6
+    day_number = now.weekday()          # Mon=0 … Sun=6
     day_name   = now.strftime("%A")
     hour       = now.hour + now.minute / 60
 
@@ -41,8 +42,6 @@ def get_week_progress():
     progress     = days_elapsed / 7.0
     days_left    = 6 - day_number
 
-    peak_block, peak_strategy = get_current_peak_block()
-
     return {
         "day_number":   day_number,
         "day_name":     day_name,
@@ -51,57 +50,51 @@ def get_week_progress():
         "days_left":    days_left,
         "current_hour": round(hour, 2),
         "in_shift":     SHIFT_START <= hour <= SHIFT_END,
-        "peak_block":   peak_block,
-        "peak_strategy": peak_strategy,
-        "fuel_price":   FUEL_PRICE_PER_LITRE,
-        "cost_per_km":  round(COST_PER_KM, 2),
     }
 
 
-def get_hotspot_targets(hotspot_name=None):
-    """Get weekly targets for a specific hotspot or defaults"""
-    if hotspot_name and hotspot_name in HOTSPOT_WEEKLY_TARGETS:
-        targets = HOTSPOT_WEEKLY_TARGETS[hotspot_name].copy()
-        targets["daily_hours"] = targets["weekly_hours_min"] / 7
-        targets["daily_trips"] = targets["weekly_trips_min"] / 7
-        return targets
-    return DEFAULT_WEEKLY_TARGETS.copy()
-
-
+# ─────────────────────────────────────────────────────────────────────────────
+# calculate_performance_score
+# CHANGE 2 — fixed universal targets, equal hours/trips weighting, no hotspot
+# ─────────────────────────────────────────────────────────────────────────────
 def calculate_performance_score(hours_online, trips_taken, report_days=1, hotspot_name=None):
     """
-    Scores a driver 0-100 based on hotspot-aligned targets.
+    Scores a driver 0–100 against universal SparklingBlu targets.
 
-    Phase 2 scoring weights:
-      Hours vs hotspot target   40%
-      Trips vs hotspot target   40%
-      Fuel efficiency           20% (future: actual km/trip data)
+    Scoring weights (equal):
+      Hours Online vs pace target   50%
+      Total Trips  vs pace target   50%
 
-    A driver at Midrand Hub (target: 60-75 trips/week) by Thursday (day 4) needs:
-      ≥ 34h online
-      ≥ 34 trips
-    to score in the Top Performer band (≥85).
+    Pace target for report_days d:
+      expected_hours = (50 / 7) * d
+      expected_trips = (35 / 7) * d
 
-    Returns a tuple: (score, status_label)
+    Example — by Thursday (day 4):
+      expected_hours ≈ 28.6h   expected_trips ≈ 20
+      A driver with 40h+ and 20+ trips scores ≥ 85 (Top Performer).
+
+    Status bands:
+      85+    → Top Performer
+      70–84  → Good
+      50–69  → Needs Improvement
+      < 50   → Urgent Attention
+
+    hotspot_name is accepted for API compatibility but ignored.
     """
-    targets = get_hotspot_targets(hotspot_name)
     days = max(int(report_days), 1)
 
-    expected_hours = targets["daily_hours"] * days
-    expected_trips = targets["daily_trips"] * days
+    expected_hours = DAILY_HOURS_TARGET * days
+    expected_trips = DAILY_TRIPS_TARGET * days
 
-    # 1. Hours score (40%)
+    # 50% hours score
     hrs_ratio = hours_online / expected_hours if expected_hours > 0 else 0
-    hrs_score = min(hrs_ratio, 1.0) * 100 * 0.40
+    hrs_score = min(hrs_ratio, 1.0) * 100 * 0.50
 
-    # 2. Trips score (40%)
+    # 50% trips score
     trp_ratio = trips_taken / expected_trips if expected_trips > 0 else 0
-    trp_score = min(trp_ratio, 1.0) * 100 * 0.40
+    trp_score = min(trp_ratio, 1.0) * 100 * 0.50
 
-    # 3. Fuel efficiency placeholder (20%) — will use actual km data in future
-    fuel_score = 100 * 0.20  # Default perfect score until km data available
-
-    score = round(hrs_score + trp_score + fuel_score, 1)
+    score = round(hrs_score + trp_score, 1)
 
     if score >= 85:
         status = "Top Performer"
@@ -115,116 +108,161 @@ def calculate_performance_score(hours_online, trips_taken, report_days=1, hotspo
     return score, status
 
 
-def get_remaining_targets(hours_online, trips_taken, progress, report_days=1, hotspot_name=None):
-    targets = get_hotspot_targets(hotspot_name)
-    days = max(int(report_days), 1)
-
-    rem = {}
-
-    # Weekly remaining
-    rem["hours_needed"] = round(max(targets["weekly_hours_min"] - hours_online, 0), 1)
-    rem["trips_needed"] = max(targets["weekly_trips_min"] - int(trips_taken), 0)
-    rem["hours_on_track"] = hours_online >= (targets["weekly_hours_min"] * max(progress, 0.01))
-    rem["trips_on_track"] = trips_taken >= (targets["weekly_trips_min"] * max(progress, 0.01))
-
-    # Current totals
-    rem["hours_weekly"] = round(hours_online, 1)
-    rem["trips_weekly"] = int(trips_taken)
-    rem["daily_hours_ok"] = (hours_online / days) >= targets["daily_hours"] if days > 0 else False
-    rem["daily_trips_ok"] = (trips_taken / days) >= targets["daily_trips"] if days > 0 else False
-
-    # Fuel cost estimate (based on avg 5km per trip)
-    estimated_km = trips_taken * 5
-    rem["estimated_fuel_cost"] = round(estimated_km * COST_PER_KM, 2)
-    rem["fuel_price_per_litre"] = FUEL_PRICE_PER_LITRE
-    rem["cost_per_km"] = round(COST_PER_KM, 2)
-
-    return rem
-
-
+# ─────────────────────────────────────────────────────────────────────────────
+# kpi_fully_met
+# CHANGE 3 — simple binary: 50h AND 35 trips
+# ─────────────────────────────────────────────────────────────────────────────
 def kpi_fully_met(hours_online, trips_taken, report_days=1, hotspot_name=None):
     """
-    KPI is met when weekly hotspot targets are hit.
+    KPI compliant when:
+      Hours Online >= 50  AND  Total Trips >= 35
+    report_days and hotspot_name accepted for API compatibility but ignored.
     """
-    targets = get_hotspot_targets(hotspot_name)
     return (
-        hours_online >= targets["weekly_hours_min"] and
-        trips_taken >= targets["weekly_trips_min"]
+        hours_online >= WEEKLY_HOURS_TARGET and
+        trips_taken  >= WEEKLY_TRIPS_TARGET
     )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# get_remaining_targets
+# CHANGE 4 — pace-based on-track flags, no hotspot
+# ─────────────────────────────────────────────────────────────────────────────
+def get_remaining_targets(hours_online, trips_taken, progress, report_days=1, hotspot_name=None):
+    """
+    Returns remaining work and on-track flags relative to weekly pace.
+
+    on-track logic:
+      expected_pace_hours = 50 * progress
+      expected_pace_trips = 35 * progress
+      hours_on_track = hours_online >= expected_pace_hours
+      trips_on_track = trips_taken  >= expected_pace_trips
+
+    Example (Thursday, progress ≈ 0.571):
+      expected_pace_hours = 28.6h  expected_pace_trips = 20
+      driver with 35h / 25 trips → both on_track = True
+      driver with 20h / 12 trips → both on_track = False
+    """
+    # Weekly remaining
+    hours_needed = round(max(WEEKLY_HOURS_TARGET - hours_online, 0), 1)
+    trips_needed = max(WEEKLY_TRIPS_TARGET - int(trips_taken), 0)
+
+    # Pace on-track
+    safe_progress        = max(progress, 0.01)
+    pace_hours_expected  = round(WEEKLY_HOURS_TARGET * safe_progress, 1)
+    pace_trips_expected  = round(WEEKLY_TRIPS_TARGET * safe_progress, 1)
+    hours_on_track       = hours_online >= pace_hours_expected
+    trips_on_track       = trips_taken  >= pace_trips_expected
+
+    return {
+        "hours_needed":        hours_needed,
+        "trips_needed":        trips_needed,
+        "hours_on_track":      hours_on_track,
+        "trips_on_track":      trips_on_track,
+        "hours_weekly":        round(hours_online, 1),
+        "trips_weekly":        int(trips_taken),
+        "pace_hours_expected": pace_hours_expected,
+        "pace_trips_expected": int(pace_trips_expected),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# get_coaching_message
+# CHANGE 5 — clear current/remaining numbers, escalating tone, no hotspot
+# ─────────────────────────────────────────────────────────────────────────────
 def get_coaching_message(score, remaining, week_info, hotspot_name=None):
     """
-    Builds a day-aware coaching message.
+    Builds a day-aware coaching message showing current totals and remaining
+    targets. Tone escalates across the week:
 
-    Tone escalates across the week:
-      Mon/Tue   -> informational, no pressure
-      Wed/Thu   -> pace check, gentle nudge
-      Fri/Sat   -> urgent, direct numbers, hotspot relocation suggestion
-      Sun       -> week-end recap
+      Mon/Tue  (day 0–1) → friendly pace reminder
+      Wed/Thu  (day 2–3) → midweek pace check, gentle nudge
+      Fri/Sat  (day 4–5) → strong urgency, direct numbers
+      Sun      (day 6)   → final week summary
 
-    If the driver is behind pace on Fri/Sat, this also recommends the
-    nearest hotspot with a higher trip target (via hotspots.py), so the
-    message tells them not just "how much" but "go where" to close the gap.
+    hotspot_name accepted for API compatibility but ignored.
     """
-    from hotspots import get_busier_nearby_hotspot
+    day_name   = week_info.get("day_name", "Today")
+    days_left  = week_info.get("days_left", 0)
+    day_number = week_info.get("day_number", 0)   # Mon=0 … Sun=6
 
-    day_name   = week_info["day_name"]
-    days_left  = week_info["days_left"]
-    day_number = week_info.get("day_number", 0)  # Mon=0 ... Sun=6
+    hrs     = remaining["hours_weekly"]
+    trips   = remaining["trips_weekly"]
+    hrs_rem = remaining["hours_needed"]
+    trp_rem = remaining["trips_needed"]
+    h_ok    = remaining["hours_on_track"]
+    t_ok    = remaining["trips_on_track"]
 
-    behind_pace = (not remaining["daily_hours_ok"]) or (not remaining["daily_trips_ok"])
+    # ── Core facts line (always shown) ──────────────────────────────────
+    current_line = f"Current: {hrs}h online, {trips} trips."
 
-    # ── Build the core numbers line (always shown) ────────────────────
-    facts = []
-    if remaining["hours_needed"] > 0:
-        facts.append(f"{remaining['hours_needed']}h still needed this week")
-    if remaining["trips_needed"] > 0:
-        facts.append(f"{remaining['trips_needed']} more trips needed this week")
-    if not facts:
-        facts.append("Weekly hours and trips targets already met")
+    if hrs_rem == 0 and trp_rem == 0:
+        target_line = "Weekly targets fully met — great work!"
+    elif hrs_rem == 0:
+        target_line = f"Hours target met. Still need {trp_rem} more trips this week."
+    elif trp_rem == 0:
+        target_line = f"Trips target met. Still need {hrs_rem}h more online this week."
+    else:
+        target_line = f"You need {hrs_rem}h and {trp_rem} more trips to reach target."
 
-    facts.append(f"Current: {remaining['hours_weekly']}h online, {remaining['trips_weekly']} trips")
-    facts.append(f"Est. fuel cost: R{remaining['estimated_fuel_cost']} (@ R{remaining['fuel_price_per_litre']}/L)")
+    # ── Pace indicator ───────────────────────────────────────────────────
+    if h_ok and t_ok:
+        pace_line = "✅ Ahead of weekly pace on both hours and trips."
+    elif h_ok and not t_ok:
+        pace_line = f"⚠️ Hours pace on track, but trips are behind ({trips} vs {remaining['pace_trips_expected']} expected by now)."
+    elif not h_ok and t_ok:
+        pace_line = f"⚠️ Trips pace on track, but hours are behind ({hrs}h vs {remaining['pace_hours_expected']}h expected by now)."
+    else:
+        pace_line = (
+            f"🔴 Behind pace on both. Expected by now: "
+            f"{remaining['pace_hours_expected']}h and {remaining['pace_trips_expected']} trips."
+        )
 
-    if week_info.get("peak_block") != "Off-Peak":
-        facts.append(f"Peak: {week_info.get('peak_block')} — {week_info.get('peak_strategy')}")
+    body = f"{current_line} {target_line} {pace_line}"
 
-    # ── Hotspot relocation suggestion — only when behind pace AND
-    #    it's late in the week (Thu=3 onward), so we don't nag on Monday ──
-    relocation_note = ""
-    if behind_pace and day_number >= 3 and hotspot_name:
-        better_spot = get_busier_nearby_hotspot(hotspot_name)
-        if better_spot:
-            relocation_note = (
-                f" Consider shifting toward {better_spot} — it has a higher "
-                f"trip volume nearby and could help you close the gap faster."
-            )
-
-    issue_text = "  |  ".join(facts) + relocation_note
-
-    # ── Day-based tone escalation ──────────────────────────────────────
-    # Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
+    # ── Day-based tone prefix ────────────────────────────────────────────
     if day_number <= 1:
-        # Monday / Tuesday — informational, no pressure
-        tone_prefix = f"Week is just getting started ({day_name}) — here's where you stand."
+        # Mon / Tue — no pressure
+        if score >= 85:
+            prefix = f"🌟 Excellent start to the week ({day_name})!"
+        elif score >= 70:
+            prefix = f"✅ Good start ({day_name}). Keep this pace up."
+        elif score >= 50:
+            prefix = f"📋 Early in the week ({day_name}) — time to build momentum."
+        else:
+            prefix = f"📋 Week just started ({day_name}). Focus on getting online and completing trips."
+
     elif day_number <= 3:
-        # Wednesday / Thursday — pace check
-        tone_prefix = f"Midweek check ({day_name}) — {days_left} day(s) left to stay on pace."
+        # Wed / Thu — midweek check
+        if score >= 85:
+            prefix = f"🌟 Strong midweek performance ({day_name}, {days_left} day(s) left)!"
+        elif score >= 70:
+            prefix = f"✅ On track midweek ({day_name}). {days_left} day(s) to finish strong."
+        elif score >= 50:
+            prefix = f"⚠️ Midweek check ({day_name}) — you need to pick up the pace. {days_left} day(s) left."
+        else:
+            prefix = f"🚨 Midweek alert ({day_name}) — falling significantly behind. {days_left} day(s) left."
+
     elif day_number <= 5:
-        # Friday / Saturday — urgent, direct
-        tone_prefix = f"⚠️ {day_name} — only {days_left} day(s) left. Time to close the gap NOW."
-    else:
-        # Sunday — recap
-        tone_prefix = f"Week wrap-up ({day_name}) — here's how the week finished."
+        # Fri / Sat — urgent
+        if score >= 85:
+            prefix = f"🌟 Outstanding! ({day_name}) — only {days_left} day(s) left and you're well ahead."
+        elif score >= 70:
+            prefix = f"⚠️ {day_name} — {days_left} day(s) left. Close the gap now."
+        elif score >= 50:
+            prefix = f"🚨 {day_name} — {days_left} day(s) left. Urgent action needed to reach target."
+        else:
+            prefix = f"🚨 CRITICAL — {day_name}, {days_left} day(s) left. Maximum effort required NOW."
 
-    if score >= 85:
-        message = f"🌟 Excellent work! {tone_prefix} You're on track for all weekly targets. {issue_text}"
-    elif score >= 70:
-        message = f"✅ {tone_prefix} Good progress overall. {issue_text}"
-    elif score >= 50:
-        message = f"⚠️ {tone_prefix} Falling behind pace. {issue_text}"
     else:
-        message = f"🚨 {tone_prefix} Critical — urgent action needed. {issue_text}"
+        # Sun — recap
+        if score >= 85:
+            prefix = "🏆 Week complete — Top Performer. Excellent work this week!"
+        elif score >= 70:
+            prefix = "✅ Week complete — Good performance overall."
+        elif score >= 50:
+            prefix = "📋 Week complete — target was partially met. Plan for a stronger start next Monday."
+        else:
+            prefix = "🚨 Week complete — targets not met. Let's discuss a plan for next week."
 
-    return message
+    return f"{prefix}  {body}"
