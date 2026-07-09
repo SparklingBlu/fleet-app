@@ -18,7 +18,6 @@ from engine import (
 from teams import TEAMS, match_drivers_to_teams
 from storage import save_fleet_data, load_fleet_data, is_storage_configured
 from uber_client import fetch_live_driver_data, UberAPIError
-from cartrack_client import fetch_vehicle_list, CartrackAPIError  # NEW — Cartrack Phase 1
 
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -395,12 +394,9 @@ if view == "admin":
 ```toml
 GITHUB_TOKEN        = "ghp_yourTokenHere"
 GIST_ID             = "yourGistIdHere"
-UBER_CLIENT_ID      = "your_uber_client_id_here"
+UBER_CLIENT_ID      = "5syO_-GOEpq7Ia_TChV9-0X57VtoRlbK"
 UBER_CLIENT_SECRET  = "your_client_secret_here"
-UBER_ORG_UUID       = "your_uber_org_uuid_here"
-CARTRACK_USERNAME   = "your_cartrack_username_here"
-CARTRACK_PASSWORD   = "your_cartrack_password_here"
-CARTRACK_REGION     = "za"
+UBER_ORG_UUID       = "8B4z_AZXs0G7Vto_3jq_bGHEfZ3iy78wmMjlJU_SnvhuBn71eN64PJdqgxbSxJGY5GyPghQ-PNsBLM5tuJfq5HBYb28tWmQYtrwV1bwXBxIDmtEPDDdWZD13dOaq6xt0_Q=="
 ```
 3. Click Save
         """)
@@ -494,7 +490,6 @@ elif view == "drivers":
 # ════════════════════════════════════════════════════════
 # FLEET / MANAGEMENT VIEW
 # CHANGE 6 — Hours Online, Trips, Score, Status (no daily averages)
-# NEW — Cartrack Vehicle Fleet section (Phase 1)
 # ════════════════════════════════════════════════════════
 elif view == "fleet":
     st.markdown("# 📊 SparklingBlu — Fleet Performance")
@@ -672,78 +667,6 @@ elif view == "fleet":
         use_container_width=True,
         hide_index=True
     )
-
-    st.divider()
-
-    # ═══════════════════════════════════════════════════════
-    # NEW — Cartrack Vehicle Fleet (Phase 1: list + status flags)
-    # ═══════════════════════════════════════════════════════
-    st.markdown("### 🚚 Vehicle Fleet (Cartrack)")
-
-    try:
-        with st.spinner("Loading vehicle data from Cartrack…"):
-            vdf = fetch_vehicle_list()
-    except CartrackAPIError as e:
-        st.error(f"❌ Cartrack Error: {e}")
-        with st.expander("🛠️ Troubleshooting"):
-            st.markdown("""
-- Check that `CARTRACK_USERNAME`, `CARTRACK_PASSWORD`, and `CARTRACK_REGION` are set in Streamlit Secrets
-- A `401` usually means wrong credentials **or** wrong region (`CARTRACK_REGION` must match your account's region, e.g. `za`)
-- Confirm the Cartrack account has active vehicles assigned
-        """)
-        vdf = None
-    except Exception as e:
-        st.error(f"❌ Unexpected error loading vehicle data: {e}")
-        vdf = None
-
-    if vdf is not None and not vdf.empty:
-        v_total       = len(vdf)
-        v_maintenance = int(vdf["Under Maintenance"].sum())
-        v_in_repair   = int(vdf["Terminal In Repair"].sum())
-        v_active      = v_total - v_maintenance
-
-        vc1, vc2, vc3, vc4 = st.columns(4)
-        vc1.metric("Total Vehicles",      v_total)
-        vc2.metric("Active",              v_active)
-        vc3.metric("Under Maintenance",   v_maintenance)
-        vc4.metric("Terminal In Repair",  v_in_repair)
-
-        st.caption(
-            f"📡 Vehicle count confirmed via Cartrack API metadata: "
-            f"{st.session_state.get('cartrack_vehicle_count', v_total)} total vehicles"
-        )
-
-        v_search = st.text_input(
-            "Search by registration or manufacturer:",
-            placeholder="e.g. MV39 or HERO",
-            key="vehicle_search"
-        )
-        v_display = vdf.copy()
-        if v_search:
-            v_mask = (
-                v_display["Registration"].astype(str).str.lower().str.contains(v_search.lower(), na=False)
-                | v_display["Manufacturer"].astype(str).str.lower().str.contains(v_search.lower(), na=False)
-            )
-            v_display = v_display[v_mask]
-
-        v_show_cols = [
-            "Registration", "Vehicle Name", "Manufacturer", "Model",
-            "Model Year", "Colour", "Vehicle Type",
-            "Default Driver ID", "Under Maintenance", "Terminal In Repair",
-        ]
-        v_show_cols = [c for c in v_show_cols if c in v_display.columns]
-        st.dataframe(
-            v_display[v_show_cols].reset_index(drop=True),
-            use_container_width=True,
-            hide_index=True
-        )
-
-        if st.session_state.get("cartrack_raw_response"):
-            with st.expander("🔍 Raw Cartrack API Response (debug)"):
-                st.json(st.session_state["cartrack_raw_response"])
-    elif vdf is not None:
-        st.info("No vehicles returned from Cartrack.")
-
     st.caption(f"SparklingBlu Fleet  |  Updated: {updated}")
 
 
