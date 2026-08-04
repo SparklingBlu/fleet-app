@@ -675,86 +675,9 @@ elif view == "fleet":
 # CHANGE 6 — Hours Online, Trips, Score, Status
 # ════════════════════════════════════════════════════════
 elif view == "team":
-    data = load_fleet_data()
-    if not data:
-        st.warning("No data available. Ask the fleet manager to publish this week's stats.")
-        st.stop()
+    from team_view import render_team_view
+    render_team_view(team_param)
 
-    df      = pd.DataFrame(data["fleet"])
-    wi      = data.get("week_info", week_info)
-    updated = data.get("updated_at", "")
-
-    available_teams = df["Team"].unique().tolist() if "Team" in df.columns else list(TEAMS.keys())
-
-    selected_team = (
-        team_param if team_param and team_param in available_teams
-        else st.selectbox("Select your team:", available_teams)
-    )
-
-    if not selected_team:
-        st.warning("No teams found in the current data.")
-        st.stop()
-
-    leader  = TEAMS.get(selected_team, {}).get("leader", "—")
-    team_df = df[df["Team"] == selected_team].copy()
-
-    start_str = data.get("start_date", "")
-    end_str   = data.get("end_date", "")
-    week_lbl  = data.get("week_label", "")
-
-    if start_str and end_str:
-        period_str = f"{start_str} → {end_str}"
-    else:
-        period_str = f"{wi.get('day_name', '—')} | {wi.get('days_left', '—')} day(s) left"
-
-    st.markdown(f"# 👥 {selected_team} — Weekly Performance")
-
-    meta_parts = [f"Leader: {leader}", f"Period: {period_str}", f"Updated: {updated}"]
-    if week_lbl:
-        meta_parts.insert(0, f"**{week_lbl}**")
-    st.markdown("*" + "  |  ".join(meta_parts) + "*")
-
-    st.caption(
-        f"📊 Weekly targets: {int(WEEKLY_HOURS_TARGET)}h online / {WEEKLY_TRIPS_TARGET} trips"
-    )
-    st.divider()
-
-    if team_df.empty:
-        st.warning("No drivers found for this team in the current data.")
-        st.stop()
-
-    t_total     = len(team_df)
-    t_avg_hrs   = round(team_df["Hours Online"].astype(float).mean(), 1) if "Hours Online" in team_df.columns else "—"
-    t_avg_trp   = round(team_df["Total Trips"].astype(float).mean(),  1) if "Total Trips"  in team_df.columns else "—"
-    t_avg_score = round(team_df["Score"].astype(float).mean(),        1) if "Score"        in team_df.columns else "—"
-    t_best      = (
-        team_df.loc[team_df["Hours Online"].astype(float).idxmax(), "Driver"]
-        if "Hours Online" in team_df.columns else "—"
-    )
-
-    # CHANGE 6 — Hours Online, Trips, Score, Status
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Team Size",        t_total)
-    m2.metric("Hours Online",     f"{t_avg_hrs}h")    # CHANGE 6
-    m3.metric("Trips",            t_avg_trp)          # CHANGE 6
-    m4.metric("Top Hours",        t_best)
-    m5.metric("Score",            t_avg_score)        # CHANGE 6
-
-    st.divider()
-
-    # CHANGE 6 — show Hours Online, Trips, Score, Status (no daily averages)
-    show_cols = [
-        "Driver", "Hours Online", "Hours on Trip",
-        "Total Trips", "Score", "Status",
-        "Remaining Hours", "Remaining Trips", "Coaching",
-    ]
-    show_cols = [c for c in show_cols if c in team_df.columns]
-    st.dataframe(
-        team_df[show_cols].sort_values("Score", ascending=False).reset_index(drop=True),
-        use_container_width=True,
-        hide_index=True
-    )
-    st.caption(f"SparklingBlu Fleet  |  Updated: {updated}")
 
 else:
     st.error("Invalid link. Please ask your fleet manager for the correct link.")
