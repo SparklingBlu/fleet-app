@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 from storage import load_fleet_data
+from teams import SBV_DRIVERS
 
 # ─────────────────────────────────────────────
 # PAGE CONFIG
@@ -139,24 +140,7 @@ div[data-testid="stButton"] button[kind="primary"]{
 # ─────────────────────────────────────────────
 # CONSTANTS
 # ─────────────────────────────────────────────
-SBV_DRIVERS = [
-    "Stephen Mohali", "Sanele Nkosi", "Ramsey Mdumuka", "Robert Nzuy Ngamuna",
-    "Raphael Banda", "Nelson Zangirai", "Anthonio Haston Bikausi", "Sabelo Vumasi",
-    "Tebogo Sathekge", "Loshani Sakisoni", "Winson Chimfwembe Mwasinga", "Percy Mabuza",
-    "Bright Jere", "Jacob Murondi", "Jolter Sizwe Ndlovu", "Lebohang Molefe",
-    "Gilbert Babou Marifa", "Brian Losen Mkandla", "Davie Staliko", "Asanda Nyembe",
-    "Samuel German", "John Msosa", "Alnord Nyirenda", "Nhlokomo Selby Thomo",
-    "Desmond Farai Murondi", "Esrom Maswekana", "Lehlohonolo Lucky Moloi", "Joshua Mtisi",
-    "Blessings Maseko Sinosi", "Takwana Jonga", "Jefule Mustafa", "Katleho Mahane Mahamo",
-    "Vincent Tonex", "Vuyisa Mdebuka", "Lester Banda", "Innocent Grant Chapotera",
-    "Stiven Banda", "Louis Suntche", "Mgcini Moyo", "Lucas Inkosinathi Dhlamini",
-    "Sam Haba", "Anele Sithole", "Kimia Gedeon Beloko", "Siphesihle Mdebuka",
-    "Richard Ibrahim", "Khulerani Tshabalala", "Willard Bakali", "Ishmael Mussah",
-    "Faidon Safali", "Idelito Valexy", "Alfred Sanny Tshabalala", "Bafana Nicholas Mahlangu",
-    "Brian Chiremba", "Blessings Zuze", "Richard Laston", "Amazing Calvin Servazio",
-    "Francis Phwitiko", "Vusi Rodgers Mtwiche", "Akimu Soko", "Vumbhoni Owen Mathye",
-    "Junior Ishumeal", "Alli Mabvuto",
-]
+# SBV_DRIVERS now imported from teams.py (single source of truth)
 
 # ── CHANGE: Updated to match engine.py universal targets (50h / 35 trips) ──
 WEEKLY_HOURS_TARGET  = 50.0
@@ -316,9 +300,9 @@ def get_sparky_response(question: str, df: pd.DataFrame) -> str:
 
     elif "most trips" in q:
         if team_col in df.columns and trips_col in df.columns:
-            hotspot = df.groupby(team_col)[trips_col].sum().idxmax()
+            top_team = df.groupby(team_col)[trips_col].sum().idxmax()
             total = int(df.groupby(team_col)[trips_col].sum().max())
-            return f"🗺️ Team with most trips: **{hotspot}** — {total} total trips."
+            return f"🗺️ Team with most trips: **{top_team}** — {total} total trips."
         return "Trip data not available."
 
     elif "average score" in q or "avg score" in q:
@@ -588,50 +572,50 @@ def main():
 
     st.divider()
 
-    # ── Section 3: Hotspot Performance ───────
-    st.markdown('<div class="section-header">Hotspot Performance</div>', unsafe_allow_html=True)
+    # ── Section 3: Team Performance ──────────
+    st.markdown('<div class="section-header">Team Performance</div>', unsafe_allow_html=True)
 
     if team_col in df.columns:
-        hotspot_groups = df.groupby(team_col)
-        hotspot_stats  = hotspot_groups.agg(
+        team_groups = df.groupby(team_col)
+        team_stats  = team_groups.agg(
             driver_count=(driver_col, "count") if driver_col in df.columns else (team_col, "count"),
             avg_hours=(hours_col, "mean")      if hours_col  in df.columns else (team_col, "count"),
             avg_score=(score_col, "mean")      if score_col  in df.columns else (team_col, "count"),
         ).reset_index()
 
-        # Top driver per hotspot
+        # Top driver per team
         if driver_col in df.columns and hours_col in df.columns:
-            top_per_hotspot = (
+            top_per_team = (
                 df.loc[df.groupby(team_col)[hours_col].idxmax()][[team_col, driver_col]]
                 .set_index(team_col)
             )
         else:
-            top_per_hotspot = pd.DataFrame()
+            top_per_team = pd.DataFrame()
 
-        n_hotspots   = len(hotspot_stats)
+        n_teams      = len(team_stats)
         cols_per_row = 3
-        for i in range(0, n_hotspots, cols_per_row):
+        for i in range(0, n_teams, cols_per_row):
             row_cols = st.columns(cols_per_row)
             for j, col_widget in enumerate(row_cols):
                 idx = i + j
-                if idx >= n_hotspots:
+                if idx >= n_teams:
                     break
-                row          = hotspot_stats.iloc[idx]
-                hotspot_name = row[team_col]
-                top_driver   = (
-                    top_per_hotspot.loc[hotspot_name, driver_col]
-                    if hotspot_name in top_per_hotspot.index
+                row        = team_stats.iloc[idx]
+                team_name  = row[team_col]
+                top_driver = (
+                    top_per_team.loc[team_name, driver_col]
+                    if team_name in top_per_team.index
                     else "N/A"
                 )
                 with col_widget:
                     st.metric(
-                        label=f"🏙️ {hotspot_name}",
+                        label=f"👥 {team_name}",
                         value=f"{int(row.get('driver_count', 0))} drivers",
                         delta=f"Avg {row.get('avg_hours', 0):.1f}h | Score {row.get('avg_score', 0):.2f}",
                     )
                     st.caption(f"Top: {top_driver}")
     else:
-        st.info("No 'Team' column found in data for hotspot grouping.")
+        st.info("No 'Team' column found in data for team grouping.")
 
     st.divider()
 
@@ -720,7 +704,7 @@ def main():
     search_col1, search_col2 = st.columns([3, 1])
     with search_col1:
         search_query = st.text_input(
-            "🔍 Search by driver name, team, or hotspot",
+            "🔍 Search by driver name or team",
             placeholder="e.g. Bright, Sandton, Team A …",
         )
     with search_col2:
@@ -770,7 +754,7 @@ def main():
         example_questions = [
             "Who is the top driver?",
             "How many drivers are behind target?",
-            "Which hotspot has the most trips?",
+            "Which team has the most trips?",
             "What is the average score?",
             "Show me SBV drivers",
             "Who has the lowest hours?",
