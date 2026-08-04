@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 from storage import load_fleet_data
-from teams import SBV_DRIVERS
+from teams import SBV_DRIVERS, get_all_team_drivers
 
 # ─────────────────────────────────────────────
 # PAGE CONFIG
@@ -619,62 +619,48 @@ def main():
 
     st.divider()
 
-    # ── Section 4: SBV Drivers ────────────────
-    st.markdown('<div class="section-header">SBV Driver Tracking</div>', unsafe_allow_html=True)
+    # ── Section 4: Team Roster Tracking ───────
+    st.markdown('<div class="section-header">Team Roster Tracking</div>', unsafe_allow_html=True)
 
-    with st.expander("🚛 SBV Fleet Tracking", expanded=False):
-        if driver_col in df.columns:
-            sbv_mask     = df[driver_col].apply(match_sbv_driver)
-            sbv_df       = df[sbv_mask].copy()
-            active_count = len(sbv_df)
-            total_sbv    = len(SBV_DRIVERS)
+    with st.expander("🚛 SBV Team Roster — Active Drivers", expanded=False):
+        if driver_col in df.columns and team_col in df.columns:
+            roster        = get_all_team_drivers()
+            total_roster  = len(roster)
+            active_mask   = df[team_col] != "Unassigned"
+            active_df     = df[active_mask].copy()
+            active_count  = len(active_df)
 
             st.metric(
-                "SBV Drivers Active",
-                f"{active_count} of {total_sbv}",
-                delta=f"{total_sbv - active_count} not found in data",
+                "Team Drivers Online",
+                f"{active_count} of {total_roster}",
+                delta=f"{total_roster - active_count} not online",
                 delta_color="inverse",
             )
 
-            if not sbv_df.empty:
-                display_cols = [c for c in [driver_col, team_col, hours_col, trips_col, score_col] if c in sbv_df.columns]
-                sbv_display  = sbv_df[display_cols].copy()
+            if not active_df.empty:
+                display_cols = [c for c in [driver_col, team_col, hours_col, trips_col, score_col] if c in active_df.columns]
+                active_display = active_df[display_cols].copy()
 
                 status_list = []
-                for _, r in sbv_df.iterrows():
+                for _, r in active_df.iterrows():
                     status, _ = get_day_aware_coaching(r)
                     status_list.append(status)
-                sbv_display["Status"] = status_list
+                active_display["Status"] = status_list
 
-                st.dataframe(sbv_display, use_container_width=True, hide_index=True)
+                st.dataframe(active_display, use_container_width=True, hide_index=True)
             else:
-                st.info("No SBV drivers found in current fleet data.")
+                st.info("No team roster drivers found in current fleet data.")
 
-            # List missing SBV drivers
-            matched_names = sbv_df[driver_col].tolist() if not sbv_df.empty else []
-            missing_sbv   = []
-            for sbv_name in SBV_DRIVERS:
-                sbv_lower = sbv_name.lower()
-                sbv_parts = sbv_lower.split()
-                in_data   = False
-                for m in matched_names:
-                    m_lower = m.lower()
-                    if len(sbv_parts) >= 2:
-                        if sbv_parts[0] in m_lower and sbv_parts[-1] in m_lower:
-                            in_data = True
-                            break
-                    if sbv_lower in m_lower or m_lower in sbv_lower:
-                        in_data = True
-                        break
-                if not in_data:
-                    missing_sbv.append(sbv_name)
+            # List roster drivers not currently online
+            matched_lower = {m.strip().lower() for m in active_df[driver_col].tolist()} if not active_df.empty else set()
+            missing_roster = [name for name in roster if name.strip().lower() not in matched_lower]
 
-            if missing_sbv:
+            if missing_roster:
                 st.markdown(
-                    "**SBV Drivers Not in Current Data:** " + ", ".join(missing_sbv)
+                    "**Team Drivers Not Online:** " + ", ".join(missing_roster)
                 )
         else:
-            st.warning("Driver column not found in data.")
+            st.warning("Driver or Team column not found in data.")
 
     st.divider()
 

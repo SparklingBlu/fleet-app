@@ -100,6 +100,16 @@ def get_team_for_driver(driver_name):
     return "Unassigned"
 
 
+def get_all_team_drivers():
+    """Returns a flat list of every driver name across all teams.
+    Automatically reflects the current roster size -- grows/shrinks
+    as drivers are added to or removed from TEAMS in this file."""
+    all_drivers = []
+    for team_data in TEAMS.values():
+        all_drivers.extend(team_data["drivers"])
+    return all_drivers
+
+
 def get_hotspot_for_driver(driver_name):
     """Hotspot concept retired — teams are no longer hotspot-based.
     Kept only so any older code still calling this doesn't break."""
