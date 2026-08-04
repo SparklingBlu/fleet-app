@@ -57,6 +57,12 @@ h1,h2,h3{color:#0f2027!important;}
 # ⚠️ UPDATE THESE once app_drivers.py and app_management.py are redeployed
 DRIVERS_BASE_URL    = "https://fleet-app-ctqw8bt8iwuvemoeeabfts.streamlit.app"
 MANAGEMENT_BASE_URL = "https://fleet-app-xrjqjcdq7hsappx7u9hkamq.streamlit.app"
+TEAM_URLS = {
+    "Team 1": "https://fleet-app-t6p76dt6jssgfgbbgdoaga.streamlit.app",
+    "Team 2": "https://fleet-app-7m2selsgmrcjivbbumchuf.streamlit.app",
+    "Team 3": "https://fleet-app-ebcqtmjfr9ffomjwkvcz8r.streamlit.app",
+    "Team 4": "https://fleet-app-gjp7xvjjln2xa9eq8w3kes.streamlit.app",
+}
 
 FUEL_COST_PER_KM = 2.53   # R/km — update when fuel price changes
 
@@ -67,8 +73,8 @@ def date_only():
 def make_link(view, team=None):
     if view == "fleet":
         return MANAGEMENT_BASE_URL
-    if team:
-        return f"{DRIVERS_BASE_URL}/?view={view}&team={team.replace(' ', '+')}"
+    if view == "team" and team:
+        return TEAM_URLS.get(team, f"{DRIVERS_BASE_URL}/?view={view}&team={team.replace(' ', '+')}")
     return f"{DRIVERS_BASE_URL}/?view={view}"
 
 def banner_html(text):
