@@ -1,8 +1,7 @@
 # teams.py
-# Team rosters + Hotspot-aligned driver assignments
-# Aligned with Fleet Operational Strategy (May 25 – June 14, 2026)
+# Team rosters — SBV Team Groupings (current structure)
 
-# ── SBV MASTER LIST ─────────────────────────────────────────────────────────
+# ── SBV MASTER LIST ───────────────────────────────────────────────────────
 SBV_DRIVERS = [
     "Akimu Soko", "Alfred Sanny Tshabalala", "Alli Mabvuto", "Alnord Nyirenda",
     "Amazing Calvin Servazio", "Andrew Gracious Phiri", "Anthonio Haston Bikausi",
@@ -50,64 +49,42 @@ def mark_sbv_drivers(df):
     return df
 
 
-# ── TEAM ROSTERS (Hotspot-Aligned) ───────────────────────────────────────────
+# ── TEAM ROSTERS (current structure — SBV Team Groupings) ──────────────────
 TEAMS = {
-    "Midrand Hub (KFC Yarona/Ebony)": {
+    "Team 1": {
+        "leader": "Sailence Matolo",
+        "drivers": [
+            "Sailence Matolo", "Nekias Nkiwane", "Stephen Mohali",
+            "Nicholas Bafana Mahlangu", "Eid Kazembe", "Sihle Tivane",
+            "Haston Bikausi", "Ramsey Mdumuka", "Samuel German",
+            "Asanda Nyembe", "Ndumiso Humphrey Bukwana", "Maganga Chikondi",
+        ],
+    },
+    "Team 2": {
         "leader": "John Msosa",
-        "hotspot": "Midrand Hub",
         "drivers": [
-            "John Msosa", "Joshua Mtisi", "Alnord Nyirenda",
-            "Yohane Stiven Banda", "Brian Losen Mkandla", "Raphael Banda",
-            "Desmond Farai Murondi", "Loshani Loshani",
-            "Louis Suntche", "Esrom Maswikana Sekhobana",
-            "K Tshabalala", "Alli Mabvuto", "Paul Moffat",
-            "Asanda Nyembe", "Innocent Grant Chapotera", "Andrew Gracious Phiri",
+            "John Msosa", "Sakhele Siboniso Percy Mabuza", "Mgcini Moyo",
+            "Gian Manda", "Jali Useni Bvumbwe", "Vusi Rodgers Mtwiche",
+            "Nhlokomo Selby Thomo", "Desmond Farai Murondi", "Joshua Mtisi",
+            "Sanele Sydwell Nkosi", "Jacob Murondi", "Kabela Danny Chauke",
         ],
     },
-    "Soweto Cluster (Orlando/Dlamini)": {
-        "leader": "Sabelo Vumasi",
-        "hotspot": "Soweto Cluster",
+    "Team 3": {
+        "leader": "Jolter Ndlovu",
         "drivers": [
-            "Sabelo Vumasi", "BLESSINGS ZUZE", "Siphesihle Mdebuka", "Mgcini Moyo",
-            "Vinicent Tonex", "Gilbert Babou Kapanda", "Idelito Valexy",
-            "Matata Samuel Netshandama", "Robert Nzuy Ngamuna",
-            "Davie Nkhoma Staliko", "Samuel German", "Kado Genuen", "Richard Laston",
-            "Willard Bakali", "Sam Haba", "Jacob Murondi", "Ofentse Matias Leballo",
+            "Jolter Ndlovu", "Loshani Loshani", "Haroon Kimu",
+            "Winson Mwasinga", "William Ozil Banda", "Sthembiso Josia Mbuli",
+            "Katleho Mahase Mahamo", "Peter Tedious Chirefu", "Lebohang Molefe",
+            "Magetsi Daudi", "Gilbert Babou Kapanda", "Alex Edward Mabuka",
         ],
     },
-    "Kempton Park Cluster": {
-        "leader": "Stephen Mohali",
-        "hotspot": "Kempton Park Cluster",
+    "Team 4": {
+        "leader": "Brian Losen Mkandla",
         "drivers": [
-            "Stephen Mohali", "Ramsey Mdumuka", "Sanele Sydwell Nkosi",
-            "Nathan Ronald Nanchu", "Lebohang Molefe",
-            "Sakhele Siboniso Percy Mabuza", "Lucas Inkosinathi Dhlamini",
-            "Katleho Mahase Mahamo", "Lehlohonolo Lucky-Boy Moloi",
-            "Nekias Nkiwane", "Vuyisa Mdebuka", "Junior Ishumeal",
-            "Amazing Calvin Servazio", "Vumbhoni Owen Mathye",
-            "Mpho Mofokeng", "Brian Chiremba",
-        ],
-    },
-    "JHB CBD / Braamfontein": {
-        "leader": "Lester Gilamoto Banda",
-        "hotspot": "JHB CBD / Braamfontein Node",
-        "drivers": [
-            "Lester Gilamoto Banda", "MPENDULO INNOCENT MPILA",
-            "Vusi Rodgers Mtwiche", "Bright Jere", "Jolter Ndlovu",
-            "Nelson Zangirai", "Francis Phwitiko", "Jefule Mustafa",
-            "Winson Mwasinga", "Paulo Antonio", "Akimu Soko",
-            "Ishmael Mussah", "Faidon Safali", "Ibrahim Rishard",
-            "Anele Sithole", "Hlayisane Makhuneni Mawelela",
-            "Alfred Sanny Tshabalala",
-        ],
-    },
-    "Norwood / Orange Grove": {
-        "leader": "Haston Bikausi",
-        "hotspot": "Norwood / Orange Grove Node",
-        "drivers": [
-            "Haston Bikausi", "Moses", "Pemphero Mika",
-            "Musa Glenda", "Samuel", "Paul", "Ramsey",
-            "Nickson Saini", "Jolter Sizwe Ndlovu", "Brian Losen Mkandla",
+            "Brian Losen Mkandla", "Nelson Zangirai", "Twesta Ebelo",
+            "Alnord Nyirenda", "Ibrahim Rishard", "Willard Bakali",
+            "Anele Sithole", "Mpendulo Prince Ndlovu", "Amazing Calvin Servazio",
+            "Lehlohonolo Lucky-Boy Moloi", "Junior Ishumeal", "Katleho Morgan Khanye",
         ],
     },
 }
@@ -124,12 +101,8 @@ def get_team_for_driver(driver_name):
 
 
 def get_hotspot_for_driver(driver_name):
-    """Returns the hotspot name for a given driver."""
-    name_lower = driver_name.strip().lower()
-    for team_name, team_data in TEAMS.items():
-        for d in team_data["drivers"]:
-            if d.strip().lower() == name_lower:
-                return team_data.get("hotspot", "Unassigned")
+    """Hotspot concept retired — teams are no longer hotspot-based.
+    Kept only so any older code still calling this doesn't break."""
     return "Unassigned"
 
 
