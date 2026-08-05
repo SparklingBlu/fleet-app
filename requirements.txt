@@ -1,6 +1,7 @@
 # SparklingBlu Fleet Management System - Requirements
 # Core
 streamlit>=1.28.0
+starlette<1.0   # pin: starlette 1.0 (June 2026) broke Streamlit's bundled GZip middleware
 pandas>=2.0.0
 
 # API & HTTP
