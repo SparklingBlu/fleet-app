@@ -66,7 +66,7 @@ TEAMS = {
             "John Msosa", "Sakhele Siboniso Percy Mabuza", "Mgcini Moyo",
             "Gian Manda", "Jali Useni Bvumbwe", "Vusi Rodgers Mtwiche",
             "Nhlokomo Selby Thomo", "Desmond Farai Murondi", "Joshua Mtisi",
-            "Sanele Sydwell Nkosi", "Jacob Murondi", "Kabela Danny Chauke",
+            "Sanele Sydwell Nkosi", "Jacob Murondi", "Owen Banda",
         ],
     },
     "Team 3": {
