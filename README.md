@@ -12,14 +12,22 @@ drivers, password-protected for management.
 |---|---|---|
 | **Admin** | Fetch live Uber data, review, publish | *(internal — admin only)* |
 | **Drivers** | Drivers look up their own weekly stats | `app.py?view=drivers` |
-| **Team** | Team leaders view their team's performance | `app.py?view=team&team=TeamName` |
+| **Team 1** | Team 1 leader/roster view | https://fleet-app-t6p76dt6jssgfgbbgdoaga.streamlit.app |
+| **Team 2** | Team 2 leader/roster view | https://fleet-app-7m2selsgmrcjivbbumchuf.streamlit.app |
+| **Team 3** | Team 3 leader/roster view | https://fleet-app-ebcqtmjfr9ffomjwkvcz8r.streamlit.app |
+| **Team 4** | Team 4 leader/roster view | https://fleet-app-gjp7xvjjln2xa9eq8w3kes.streamlit.app |
 | **Management** | Full fleet dashboard, insights, Sparky chatbot | `app_management.py` (password protected) |
 
 ## Architecture
 
 ```
 app.py              # Admin panel — fetches Uber API data, scores drivers, publishes to Gist
-                     # Also serves the public Drivers, Team, and Fleet (redirect) views via ?view=
+                     # Also serves the public Drivers and Fleet (redirect) views via ?view=
+team_view.py         # Shared render_team_view() used by all four standalone team apps
+team_1.py            # Standalone deployment — Team 1 (imports team_view.py)
+team_2.py            # Standalone deployment — Team 2 (imports team_view.py)
+team_3.py            # Standalone deployment — Team 3 (imports team_view.py)
+team_4.py            # Standalone deployment — Team 4 (imports team_view.py)
 app_management.py   # Password-protected management dashboard (insights, hotspots, Sparky)
 engine.py            # Scoring engine — weekly targets, performance score, coaching messages
 teams.py             # Team/hotspot definitions and driver-to-team matching
@@ -36,16 +44,23 @@ uber_client.py       # Uber API client — auth + fetch driver metrics
    `Top Performer (85+) → Good (70–84) → Needs Improvement (50–69) → Urgent Attention (<50)`.
 3. Admin reviews the table, then **publishes** the dataset to a GitHub Gist
    (`storage.py`). This Gist is the single source of truth shared between all apps.
-4. **Drivers**, **Team**, and **Management** views all read from that same Gist —
-   so every permanent link always shows the latest published data, with zero
-   redeploys needed after publishing.
+4. **Drivers**, all four **Team** apps, and **Management** all read from that
+   same Gist — so every permanent link always shows the latest published data,
+   with zero redeploys needed after publishing. Each team app is its own
+   Streamlit Cloud deployment (main file `team_1.py`–`team_4.py`), sharing the
+   same `GIST_ID`/`GITHUB_TOKEN` secrets as the admin app.
 
 ### Views in `app.py`
 
 - `?view=admin` — fetch, score, and publish (default)
 - `?view=drivers` — driver self-lookup by name
-- `?view=team&team=<name>` — team leader dashboard
 - `?view=fleet` — redirects to the management app
+
+Team views used to be served via `?view=team&team=<name>` off `app.py`. They are
+now four standalone apps (`team_1.py`-`team_4.py`), each deployed separately on
+Streamlit Community Cloud and sharing `team_view.py`'s `render_team_view()`. The
+admin panel's Team Links now point directly at those four app URLs instead of
+a query string.
 
 ### Management dashboard (`app_management.py`)
 
